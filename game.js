@@ -68,7 +68,9 @@ const SRStests = {
                 "K3C" : [0,0, -1,0, -1,-1, 0,2, -1,2],
                 "O" : [0,0, 0,0, 0,0, 0,0, 0,0]
 };
-var board;
+let pressedKeys = {};
+
+var board; // this right?
 
 class Board{
     constructor(id, canvasWidth, canvasHeight, boardWidth, boardHeight){
@@ -79,41 +81,75 @@ class Board{
         this.boardHeight = boardHeight;
         this.board = new Array(boardWidth);
         for(let i=0; i<boardWidth; i++)
-            this.board[i] = new Array(boardHeight).fill('E');
+            this.board[i] = new Array(boardHeight+ghostHeight).fill('E');
         
         this.getParams();
 
         this.gameOn = false;
         this.isPaused = false;
-        this.startGame();
     }
 
     startGame(){
         this.gameOn = true;
         this.bagIdx = 0;
-        this.currBag = suffleBag();
-        this.nextBag = "";
+        this.bag = suffleBag();
         this.onHold = 'E';
         this.getStartingPos();
         this.fallInterval = 500;
         this.interval = setInterval(()=>{
             if (!this.gameOn || this.isPaused) return;
-            if (this.fallInterval<0){
-                this.by--;
-                this.fallInterval=500;
-                this.drawBoard();
+            if (pressedKeys["ArrowDown"] || this.fallInterval<0){
+                if(this.checkPos(this.bx,this.by-1,this.bag[this.bagIdx],this.br)){
+                    this.by--;
+                    this.fallInterval=500;
+                    this.drawBoard();
+                }
+                else{
+                    console.log("I HAVE FALLEN AND I CAN'T GET UP");
+                    // stick and get next mino
+                }
             }
             else this.fallInterval--;
         },1);
     }
 
+    // r: -1(CC) 0(No rotation) 1(C)
+    checkRotation(r){
+        return true;
+    }
+
+    // cx,cy : center point of mino
+    checkPos(cx, cy, type, r){
+        var mino = minoOffset[type+r];
+        var m = mino.length;
+        for(let i=0; i<m; i+=2)
+            if(!this.checkBlock(cx+mino[i], cy+mino[i+1]))
+                return false;
+        return true;
+    }
+
+    checkBlock(x, y){
+        console.log(x,y,this.board[x][y]);
+        return (0<=x) && (x<this.boardWidth) && (0<=y) && this.board[x][y]=='E';
+    }
+
+    getNextMino(){
+        this.bagIdx++;
+        if(this.bagIdx == 2)
+            this.bag += suffleBag();
+        if(this.bagIdx == 7){
+            this.bag = this.bag.substr(7);
+            this.bagIdx = 0;
+        }
+        this.getStartingPos();
+    }
 
     getStartingPos(){
         // currently falling block position, rotation value
         this.bx = Math.floor((this.boardWidth+1)/2);
         this.by = this.boardHeight;
         this.br = 0;
-        if(this.currBag[this.bagIdx] == 'O') this.by++;
+        if(this.bag[this.bagIdx] == 'O') this.by++;
     }
 
     getParams(){
@@ -141,7 +177,7 @@ class Board{
     
         if (canvas.getContext('2d')){
             var ctx = canvas.getContext('2d');
-
+            
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.beginPath();
 
@@ -181,7 +217,8 @@ class Board{
             for(let i=0; i<this.boardWidth; i++)
                 for(let j=0; j<this.boardHeight+ghostHeight; j++)
                     this.drawBlock(ctx, i,j,blockColor[this.board[i][j]]);
-            this.drawMino(ctx,this.currBag[this.bagIdx],this.bx,this.by,this.br);
+            if(this.gameOn)
+                this.drawMino(ctx,this.bag[this.bagIdx],this.bx,this.by,this.br);
         }
     }
 
@@ -192,7 +229,6 @@ class Board{
         ctx.fillRect(this.sx+this.blk*x-0.5, this.sy+this.blk*(this.boardHeight-1-y)-0.5, this.blk+0.5, this.blk+0.5);
     }
 
-    // All according to SRS (i think)
     drawMino(ctx,type,cx,cy,r){
         var pos = minoOffset[type+r];
         var m = pos.length;
@@ -235,6 +271,7 @@ function setSinglePlayer(boardWidth, boardHeight){
     var newCanvas = createCanvas("single0", container.clientWidth, container.clientHeight, 0, 0);
     container.appendChild(newCanvas);
     board = new Board("single0", container.clientWidth, container.clientHeight, boardWidth, boardHeight);
+    board.startGame();
     board.drawBoard();
 }
 
@@ -252,6 +289,14 @@ window.onresize = function(e){
     resizeSinglePlayer();
 }
 
+window.addEventListener("keydown", (event) =>{
+    pressedKeys[event.code] = true;
+});
+
+window.addEventListener("keyup", (event) =>{
+    pressedKeys[event.code] = false;
+});
+
 
 /*
 //debug
@@ -262,5 +307,5 @@ setInterval(()=>{
     board.drawMino(ctx,blockSeq[Math.floor(K/4)],5,20,K%4);
     K++;
     if(K>=28) K=0;
-}, 1000);
+}, 500);
 */
