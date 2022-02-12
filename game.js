@@ -5,6 +5,7 @@
 // TODO: add throttle module on resize
 
 const ghostHeight=3;
+const fallInterval=200;
 const blockSeq = "IJLOSTZ";
 const blockColor = {
                 'L':'#f69552',
@@ -69,6 +70,7 @@ const SRStests = {
                 "O" : [0,0, 0,0, 0,0, 0,0, 0,0]
 };
 let pressedKeys = {};
+let heldKeys = {};
 
 var board; // this right?
 
@@ -95,22 +97,76 @@ class Board{
         this.bag = suffleBag();
         this.onHold = 'E';
         this.getStartingPos();
-        this.fallInterval = 500;
+        this.fallTimer = fallInterval;
         this.interval = setInterval(()=>{
             if (!this.gameOn || this.isPaused) return;
-            if (pressedKeys["ArrowDown"] || this.fallInterval<0){
+
+            // Left
+            if (pressedKeys["ArrowLeft"]){
+                if(this.checkPos(this.bx-1,this.by,this.bag[this.bagIdx],this.br)){
+                    this.bx--;
+                    this.drawBoard();
+                    pressedKeys["ArrowLeft"]=false;
+                }
+            }
+
+            // Right
+            if (pressedKeys["ArrowRight"]){
+                if(this.checkPos(this.bx+1,this.by,this.bag[this.bagIdx],this.br)){
+                    this.bx++;
+                    this.drawBoard();
+                    pressedKeys["ArrowRight"]=false;
+                }
+            }
+
+            // Clockwise rotation
+            if (pressedKeys["ArrowUp"]){
+                let nextBr = this.br==3 ? 0 : this.br+1;
+                console.log(nextBr);
+
+                pressedKeys["ArrowUp"]=false;
+            }
+
+            // Counter clockwise rotation
+
+            // Harddrop
+            
+            // Softdrop
+            if (pressedKeys["ArrowDown"]){
                 if(this.checkPos(this.bx,this.by-1,this.bag[this.bagIdx],this.br)){
                     this.by--;
-                    this.fallInterval=500;
+                    this.fallTimer=fallInterval;
                     this.drawBoard();
                 }
                 else{
-                    console.log("I HAVE FALLEN AND I CAN'T GET UP");
-                    // stick and get next mino
+                    this.fallTimer--;
                 }
             }
-            else this.fallInterval--;
+
+            // Gravity
+            if(this.fallTimer<0){
+                if(this.checkPos(this.bx,this.by-1,this.bag[this.bagIdx],this.br)){
+                    this.by--;
+                    this.fallTimer=fallInterval;
+                    this.drawBoard();
+                }
+                else{
+                    this.recordMino(this.bx, this.by, this.bag[this.bagIdx],this.br);
+                    this.getNextMino();
+                }
+            }
+            else{
+                this.fallTimer--;
+            }
         },1);
+    }
+
+    recordMino(cx, cy, type, r){
+        var mino = minoOffset[type+r];
+        var m = mino.length;
+        for(let i=0; i<m; i+=2)
+            this.board[cx+mino[i]][cy+mino[i+1]] = type;
+        // check line to delete
     }
 
     // r: -1(CC) 0(No rotation) 1(C)
@@ -129,7 +185,6 @@ class Board{
     }
 
     checkBlock(x, y){
-        console.log(x,y,this.board[x][y]);
         return (0<=x) && (x<this.boardWidth) && (0<=y) && this.board[x][y]=='E';
     }
 
@@ -290,11 +345,14 @@ window.onresize = function(e){
 }
 
 window.addEventListener("keydown", (event) =>{
+    if(pressedKeys[event.code])
+        heldKeys[event.code] = true;
     pressedKeys[event.code] = true;
 });
 
 window.addEventListener("keyup", (event) =>{
     pressedKeys[event.code] = false;
+    heldKeys[event.code] = false;
 });
 
 
