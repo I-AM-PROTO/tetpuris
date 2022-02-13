@@ -3,6 +3,7 @@
 
 // TODO: redraw canvas and board ONLY IF size changes
 // TODO: add throttle module on resize
+// TODO: infinity should not happen while airborne
 
 const ghostHeight=3;
 const fallInterval=200;
@@ -67,10 +68,10 @@ const SRStests = {
                 "K1C" : [0,0, 1,0, 1,-1, 0,2, 1,2],
                 "K2C" : [0,0, 1,0, 1,1, 0,-2, 1,-2],
                 "K3C" : [0,0, -1,0, -1,-1, 0,2, -1,2],
-                "O" : [0,0, 0,0, 0,0, 0,0, 0,0]
+                "O" : [0,0]
 };
 let pressedKeys = {};
-let heldKeys = {};
+let operatedKeys = {};
 
 var board; // this right?
 
@@ -103,7 +104,7 @@ class Board{
 
             // Left
             if (pressedKeys["ArrowLeft"]){
-                if(this.checkPos(this.bx-1,this.by,this.bag[this.bagIdx],this.br)){
+                if(this.checkMinoPos(this.bx-1,this.by,this.bag[this.bagIdx],this.br)){
                     this.bx--;
                     this.drawBoard();
                     pressedKeys["ArrowLeft"]=false;
@@ -112,7 +113,7 @@ class Board{
 
             // Right
             if (pressedKeys["ArrowRight"]){
-                if(this.checkPos(this.bx+1,this.by,this.bag[this.bagIdx],this.br)){
+                if(this.checkMinoPos(this.bx+1,this.by,this.bag[this.bagIdx],this.br)){
                     this.bx++;
                     this.drawBoard();
                     pressedKeys["ArrowRight"]=false;
@@ -120,20 +121,88 @@ class Board{
             }
 
             // Clockwise rotation
-            if (pressedKeys["ArrowUp"]){
+            if (pressedKeys["ArrowUp"] && !operatedKeys["ArrowUp"]){
                 let nextBr = this.br==3 ? 0 : this.br+1;
-                console.log(nextBr);
+                let code=""
+                if(this.bag[this.bagIdx]=='I')
+                    code = this.bag[this.bagIdx]+this.br+"C";
+                else if(this.bag[this.bagIdx]=='O')
+                    code = "O";
+                else
+                    code = "K"+this.br+"C";
+                let tests = SRStests[code];
+                let m = tests.length
 
-                pressedKeys["ArrowUp"]=false;
+                let passed=false;
+                let dx=0, dy=0;
+                for(let i=0; i<m && !passed; i+=2){
+                    dx=tests[i];
+                    dy=tests[i+1];
+                    //console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.bag[this.bagIdx], nextBr));
+                    if(this.checkMinoPos(this.bx+dx, this.by+dy, this.bag[this.bagIdx], nextBr))
+                        passed=true;
+                }
+
+                if(passed){
+                    this.bx+=dx;
+                    this.by+=dy;
+                    this.br=nextBr;
+                    this.fallTimer=fallInterval; // "Infinity"
+                    this.drawBoard();
+                }
+                operatedKeys["ArrowUp"] = true;
             }
 
             // Counter clockwise rotation
+            if (pressedKeys["KeyZ"] && !operatedKeys["KeyZ"]){
+                console.log("HEY!");
+                let nextBr = this.br==0 ? 3 : this.br-1;
+                let code=""
+                if(this.bag[this.bagIdx]=='I')
+                    code = this.bag[this.bagIdx]+this.br+"CC";
+                else if(this.bag[this.bagIdx]=='O')
+                    code = "O";
+                else
+                    code = "K"+this.br+"CC";
+                let tests = SRStests[code];
+                let m = tests.length
+
+                let passed=false;
+                let dx=0, dy=0;
+                for(let i=0; i<m && !passed; i+=2){
+                    dx=tests[i];
+                    dy=tests[i+1];
+                    console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.bag[this.bagIdx], nextBr));
+                    if(this.checkMinoPos(this.bx+dx, this.by+dy, this.bag[this.bagIdx], nextBr))
+                        passed=true;
+                }
+
+                if(passed){
+                    this.bx+=dx;
+                    this.by+=dy;
+                    this.br=nextBr;
+                    this.fallTimer=fallInterval; // "Infinity"
+                    this.drawBoard();
+                }
+                operatedKeys["KeyZ"] = true;
+            }
 
             // Harddrop
+            if (pressedKeys["Space"] && !operatedKeys["Space"]){
+                let nextBy = this.by;
+                while(this.checkMinoPos(this.bx, nextBy-1, this.bag[this.bagIdx], this.br))
+                    nextBy--;
+                console.log(nextBy);
+                this.by=nextBy;
+                this.recordMino(this.bx, this.by, this.bag[this.bagIdx], this.br);
+                this.getNextMino();
+                this.drawBoard();
+                operatedKeys["Space"] = true;
+            }
             
             // Softdrop
             if (pressedKeys["ArrowDown"]){
-                if(this.checkPos(this.bx,this.by-1,this.bag[this.bagIdx],this.br)){
+                if(this.checkMinoPos(this.bx,this.by-1,this.bag[this.bagIdx],this.br)){
                     this.by--;
                     this.fallTimer=fallInterval;
                     this.drawBoard();
@@ -145,7 +214,7 @@ class Board{
 
             // Gravity
             if(this.fallTimer<0){
-                if(this.checkPos(this.bx,this.by-1,this.bag[this.bagIdx],this.br)){
+                if(this.checkMinoPos(this.bx,this.by-1,this.bag[this.bagIdx],this.br)){
                     this.by--;
                     this.fallTimer=fallInterval;
                     this.drawBoard();
@@ -169,13 +238,8 @@ class Board{
         // check line to delete
     }
 
-    // r: -1(CC) 0(No rotation) 1(C)
-    checkRotation(r){
-        return true;
-    }
-
     // cx,cy : center point of mino
-    checkPos(cx, cy, type, r){
+    checkMinoPos(cx, cy, type, r){
         var mino = minoOffset[type+r];
         var m = mino.length;
         for(let i=0; i<m; i+=2)
@@ -240,7 +304,7 @@ class Board{
             ctx.lineWidth = this.blk/20; // arbitrary 20
             for(let i=0; i<11; i++){
                 for(let j=0; j<21; j++){
-                    //ctx.strokeRect(sx+blk*i,sy+blk*j,blk,blk);
+                    //ctx.strokeRect(this.sx+this.blk*i,this.sy+this.blk*(j-1),this.blk,this.blk);
                     ctx.strokeRect(this.sx+this.blk*i, this.sy+this.blk*j, 1,1);
                 }
             }
@@ -267,8 +331,8 @@ class Board{
             ctx.strokeStyle = gradient;
             ctx.moveTo(this.sx+this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
             ctx.lineTo(this.sx+2*this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
-            ctx.stroke();
-            
+            ctx.stroke()
+        
             for(let i=0; i<this.boardWidth; i++)
                 for(let j=0; j<this.boardHeight+ghostHeight; j++)
                     this.drawBlock(ctx, i,j,blockColor[this.board[i][j]]);
@@ -345,14 +409,12 @@ window.onresize = function(e){
 }
 
 window.addEventListener("keydown", (event) =>{
-    if(pressedKeys[event.code])
-        heldKeys[event.code] = true;
     pressedKeys[event.code] = true;
 });
 
 window.addEventListener("keyup", (event) =>{
     pressedKeys[event.code] = false;
-    heldKeys[event.code] = false;
+    operatedKeys[event.code] = false;
 });
 
 
