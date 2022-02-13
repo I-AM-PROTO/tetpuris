@@ -356,8 +356,9 @@ class Board{
         
             for(let i=0; i<this.boardWidth; i++)
                 for(let j=0; j<this.boardHeight+ghostHeight; j++)
-                    this.drawBlock(ctx, i,j,blockColor[this.board[i][j]]);
+                    this.drawBlock(ctx, i,j,blockColor[this.board[i][j]], true);
             if(this.gameOn){
+                this.drawGhostMino(ctx, this.currMino, this.bx, this.by, this.br);
                 this.drawMino(ctx,this.currMino,this.bx,this.by,this.br);
                 this.drawMino(ctx,this.hold,-3,this.boardHeight,0);
                 for(let i=0; i<5; i++)
@@ -368,16 +369,35 @@ class Board{
 
     // coordinate starts at left bottom as 0,0
     // assumes ctx exists
-    drawBlock(ctx,x,y,c){
-        ctx.fillStyle = c;
-        ctx.fillRect(this.sx+this.blk*x-0.5, this.sy+this.blk*(this.boardHeight-1-y)-0.5, this.blk+0.5, this.blk+0.5);
+    drawBlock(ctx,x,y,c,fill){
+        if(fill){
+            ctx.fillStyle = c;
+            ctx.fillRect(this.sx+this.blk*x-0.5, this.sy+this.blk*(this.boardHeight-1-y)-0.5, this.blk+0.5, this.blk+0.5);
+        }
+        else{
+            ctx.beginPath();
+            ctx.strokeStyle = c;
+            ctx.lineWidth = this.blk/10;
+            ctx.strokeRect(this.sx+this.blk*x-0.5, this.sy+this.blk*(this.boardHeight-1-y)-0.5, this.blk+0.5, this.blk+0.5);
+        }
     }
 
     drawMino(ctx,type,cx,cy,r){
-        var pos = minoOffset[type+r];
-        var m = pos.length;
+        let pos = minoOffset[type+r];
+        let m = pos.length;
         for(let i=0; i<m; i+=2){
-            this.drawBlock(ctx, cx+pos[i], cy+pos[i+1], blockColor[type]);
+            this.drawBlock(ctx, cx+pos[i], cy+pos[i+1], blockColor[type], true);
+        }
+    }
+
+    drawGhostMino(ctx,type,cx,cy,r){
+        let ghostBy = cy;
+        while(this.checkMinoPos(cx, ghostBy-1, type, r))
+            ghostBy--;
+        let pos = minoOffset[type+r];
+        let m = pos.length;
+        for(let i=0; i<m; i+=2){
+            this.drawBlock(ctx, cx+pos[i], ghostBy+pos[i+1], blockColor[type], false);
         }
     }
 
