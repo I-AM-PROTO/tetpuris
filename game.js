@@ -82,10 +82,10 @@ class Board{
         this.canvasHeight = canvasHeight;
         this.boardWidth = boardWidth;
         this.boardHeight = boardHeight;
-        this.board = new Array(boardWidth);
-        for(let i=0; i<boardWidth; i++)
-            this.board[i] = new Array(boardHeight+ghostHeight).fill('E');
-        
+        this.board = new Array(boardHeight+ghostHeight);
+        for(let i=0; i<boardHeight+ghostHeight; i++)
+            this.board[i] = new Array(boardWidth).fill('E');
+    
         this.getParams();
 
         this.gameOn = false;
@@ -213,13 +213,13 @@ class Board{
 
             // Gravity
             if(this.fallTimer<0){
-                if(this.checkMinoPos(this.bx,this.by-1,this.currMino,this.br)){
+                if(this.checkMinoPos(this.bx,this.by-1,this.currMino, this.br)){
                     this.by--;
                     this.fallTimer=fallInterval;
                     this.drawBoard();
                 }
                 else{
-                    this.placeMino(this.bx, this.by, this.currMino,this.br);
+                    this.placeMino(this.bx, this.by, this.currMino, this.br);
                     this.getNextMino();
                 }
             }
@@ -252,11 +252,39 @@ class Board{
     }
 
     placeMino(cx, cy, type, r){
-        var mino = minoOffset[type+r];
-        var m = mino.length;
+        let mino = minoOffset[type+r];
+        let m = mino.length;
         for(let i=0; i<m; i+=2)
-            this.board[cx+mino[i]][cy+mino[i+1]] = type;
-        // TODO: check line to delete
+            this.board[cy+mino[i+1]][cx+mino[i]] = type;
+        let cleared = 0;
+        for(let i=0; i<this.boardHeight+ghostHeight; i++){
+            let lineComplete = true;
+            for(let j=0; j<this.boardWidth; j++){
+                if(this.board[i][j]=='E'){
+                    lineComplete = false;
+                    break;
+                }
+            }
+            if(lineComplete){
+                cleared++;
+                this.board.splice(i,1);
+                this.board.push(new Array(this.boardWidth).fill('E'));
+                i--;
+            }
+        }
+        /*
+        this.board = _.remove(this.board, function(line){
+            let complete=true;
+            let m = line.length;
+            for(let i=0; i<m; i++)
+                if(line[i]=='E'){
+                    complete=false;
+                    break;
+                }
+            return complete;
+        })
+        */
+        console.log(cleared, this.board.length, this.board);
         // TODO: check gameover
     }
 
@@ -271,7 +299,7 @@ class Board{
     }
 
     checkBlock(x, y){
-        return (0<=x) && (x<this.boardWidth) && (0<=y) && this.board[x][y]=='E';
+        return (0<=x) && (x<this.boardWidth) && (0<=y) && this.board[y][x]=='E';
     }
 
     getNextMino(){
@@ -354,9 +382,9 @@ class Board{
             ctx.lineTo(this.sx+2*this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
             ctx.stroke()
         
-            for(let i=0; i<this.boardWidth; i++)
-                for(let j=0; j<this.boardHeight+ghostHeight; j++)
-                    this.drawBlock(ctx, i,j,blockColor[this.board[i][j]], true);
+            for(let i=0; i<this.boardHeight+ghostHeight; i++)
+                for(let j=0; j<this.boardWidth; j++)
+                    this.drawBlock(ctx, j,i,blockColor[this.board[i][j]], true);
             if(this.gameOn){
                 this.drawGhostMino(ctx, this.currMino, this.bx, this.by, this.br);
                 this.drawMino(ctx,this.currMino,this.bx,this.by,this.br);
