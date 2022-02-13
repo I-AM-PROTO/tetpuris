@@ -48,8 +48,8 @@ const minoOffset = {
                 "O1" : [-1,1,0,1,-1,0,0,0],
                 "O2" : [-1,1,0,1,-1,0,0,0],
                 "O3" : [-1,1,0,1,-1,0,0,0],
-                "E" : [0,1],
-                "G" : [0,1]
+                "E0" : [0,1],
+                "G0" : [0,1]
 }
 const SRStests = {
                 "I0CC" : [0,0, -1,0, 2,0, -1,2, 2,-1],
@@ -71,7 +71,7 @@ const SRStests = {
                 "O" : [0,0]
 };
 let pressedKeys = {};
-let operatedKeys = {};
+let heldKeys = {};
 
 var board; // this right?
 
@@ -94,17 +94,18 @@ class Board{
 
     startGame(){
         this.gameOn = true;
-        this.bagIdx = 0;
         this.bag = suffleBag();
-        this.onHold = 'E';
-        this.getStartingPos();
+        this.hold = 'E';
+        this.currMino = 'E';
+        this.holdSwitched = false;
+        this.getNextMino();
         this.fallTimer = fallInterval;
         this.interval = setInterval(()=>{
             if (!this.gameOn || this.isPaused) return;
 
             // Left
             if (pressedKeys["ArrowLeft"]){
-                if(this.checkMinoPos(this.bx-1,this.by,this.bag[this.bagIdx],this.br)){
+                if(this.checkMinoPos(this.bx-1,this.by,this.currMino,this.br)){
                     this.bx--;
                     this.drawBoard();
                     pressedKeys["ArrowLeft"]=false;
@@ -113,7 +114,7 @@ class Board{
 
             // Right
             if (pressedKeys["ArrowRight"]){
-                if(this.checkMinoPos(this.bx+1,this.by,this.bag[this.bagIdx],this.br)){
+                if(this.checkMinoPos(this.bx+1,this.by,this.currMino,this.br)){
                     this.bx++;
                     this.drawBoard();
                     pressedKeys["ArrowRight"]=false;
@@ -121,12 +122,12 @@ class Board{
             }
 
             // Clockwise rotation
-            if (pressedKeys["ArrowUp"] && !operatedKeys["ArrowUp"]){
+            if (pressedKeys["ArrowUp"] && !heldKeys["ArrowUp"]){
                 let nextBr = this.br==3 ? 0 : this.br+1;
                 let code=""
-                if(this.bag[this.bagIdx]=='I')
-                    code = this.bag[this.bagIdx]+this.br+"C";
-                else if(this.bag[this.bagIdx]=='O')
+                if(this.currMino=='I')
+                    code = this.currMino+this.br+"C";
+                else if(this.currMino=='O')
                     code = "O";
                 else
                     code = "K"+this.br+"C";
@@ -138,8 +139,8 @@ class Board{
                 for(let i=0; i<m && !passed; i+=2){
                     dx=tests[i];
                     dy=tests[i+1];
-                    //console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.bag[this.bagIdx], nextBr));
-                    if(this.checkMinoPos(this.bx+dx, this.by+dy, this.bag[this.bagIdx], nextBr))
+                    //console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr));
+                    if(this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr))
                         passed=true;
                 }
 
@@ -150,17 +151,16 @@ class Board{
                     this.fallTimer=fallInterval; // "Infinity"
                     this.drawBoard();
                 }
-                operatedKeys["ArrowUp"] = true;
+                heldKeys["ArrowUp"] = true;
             }
 
             // Counter clockwise rotation
-            if (pressedKeys["KeyZ"] && !operatedKeys["KeyZ"]){
-                console.log("HEY!");
+            if (pressedKeys["KeyZ"] && !heldKeys["KeyZ"]){
                 let nextBr = this.br==0 ? 3 : this.br-1;
                 let code=""
-                if(this.bag[this.bagIdx]=='I')
-                    code = this.bag[this.bagIdx]+this.br+"CC";
-                else if(this.bag[this.bagIdx]=='O')
+                if(this.currMino=='I')
+                    code = this.currMino+this.br+"CC";
+                else if(this.currMino=='O')
                     code = "O";
                 else
                     code = "K"+this.br+"CC";
@@ -172,8 +172,8 @@ class Board{
                 for(let i=0; i<m && !passed; i+=2){
                     dx=tests[i];
                     dy=tests[i+1];
-                    console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.bag[this.bagIdx], nextBr));
-                    if(this.checkMinoPos(this.bx+dx, this.by+dy, this.bag[this.bagIdx], nextBr))
+                    console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr));
+                    if(this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr))
                         passed=true;
                 }
 
@@ -184,25 +184,24 @@ class Board{
                     this.fallTimer=fallInterval; // "Infinity"
                     this.drawBoard();
                 }
-                operatedKeys["KeyZ"] = true;
+                heldKeys["KeyZ"] = true;
             }
 
             // Harddrop
-            if (pressedKeys["Space"] && !operatedKeys["Space"]){
+            if (pressedKeys["Space"] && !heldKeys["Space"]){
                 let nextBy = this.by;
-                while(this.checkMinoPos(this.bx, nextBy-1, this.bag[this.bagIdx], this.br))
+                while(this.checkMinoPos(this.bx, nextBy-1, this.currMino, this.br))
                     nextBy--;
-                console.log(nextBy);
                 this.by=nextBy;
-                this.recordMino(this.bx, this.by, this.bag[this.bagIdx], this.br);
+                this.placeMino(this.bx, this.by, this.currMino, this.br);
                 this.getNextMino();
                 this.drawBoard();
-                operatedKeys["Space"] = true;
+                heldKeys["Space"] = true;
             }
             
             // Softdrop
             if (pressedKeys["ArrowDown"]){
-                if(this.checkMinoPos(this.bx,this.by-1,this.bag[this.bagIdx],this.br)){
+                if(this.checkMinoPos(this.bx,this.by-1,this.currMino,this.br)){
                     this.by--;
                     this.fallTimer=fallInterval;
                     this.drawBoard();
@@ -214,28 +213,51 @@ class Board{
 
             // Gravity
             if(this.fallTimer<0){
-                if(this.checkMinoPos(this.bx,this.by-1,this.bag[this.bagIdx],this.br)){
+                if(this.checkMinoPos(this.bx,this.by-1,this.currMino,this.br)){
                     this.by--;
                     this.fallTimer=fallInterval;
                     this.drawBoard();
                 }
                 else{
-                    this.recordMino(this.bx, this.by, this.bag[this.bagIdx],this.br);
+                    this.placeMino(this.bx, this.by, this.currMino,this.br);
                     this.getNextMino();
                 }
             }
             else{
                 this.fallTimer--;
             }
+
+            // Hold
+            if(pressedKeys["ShiftLeft"] && !heldKeys["ShiftLeft"] && !this.holdSwitched){
+                this.switchHold(this.currMino);
+                this.holdSwitched = true;
+                heldKeys["ShiftLeft"] = true;
+                console.log(this.holdSwitched, this.hold);
+                this.drawBoard();
+            }
         },1);
     }
 
-    recordMino(cx, cy, type, r){
+    switchHold(h){
+        if(this.hold == 'E'){
+            this.hold = h;
+            this.getNextMino();
+        }
+        else{
+            let temp = this.currMino;
+            this.currMino = this.hold;
+            this.hold = temp;
+            this.getStartingPos();
+        }
+    }
+
+    placeMino(cx, cy, type, r){
         var mino = minoOffset[type+r];
         var m = mino.length;
         for(let i=0; i<m; i+=2)
             this.board[cx+mino[i]][cy+mino[i+1]] = type;
-        // check line to delete
+        // TODO: check line to delete
+        // TODO: check gameover
     }
 
     // cx,cy : center point of mino
@@ -253,14 +275,13 @@ class Board{
     }
 
     getNextMino(){
-        this.bagIdx++;
-        if(this.bagIdx == 2)
+        console.log(this.bag);
+        this.currMino = this.bag[0];
+        this.bag = this.bag.substr(1);
+        if(this.bag.length < 5)
             this.bag += suffleBag();
-        if(this.bagIdx == 7){
-            this.bag = this.bag.substr(7);
-            this.bagIdx = 0;
-        }
         this.getStartingPos();
+        this.holdSwitched = false;
     }
 
     getStartingPos(){
@@ -268,7 +289,7 @@ class Board{
         this.bx = Math.floor((this.boardWidth+1)/2);
         this.by = this.boardHeight;
         this.br = 0;
-        if(this.bag[this.bagIdx] == 'O') this.by++;
+        if(this.currMino == 'O') this.by++;
     }
 
     getParams(){
@@ -336,8 +357,12 @@ class Board{
             for(let i=0; i<this.boardWidth; i++)
                 for(let j=0; j<this.boardHeight+ghostHeight; j++)
                     this.drawBlock(ctx, i,j,blockColor[this.board[i][j]]);
-            if(this.gameOn)
-                this.drawMino(ctx,this.bag[this.bagIdx],this.bx,this.by,this.br);
+            if(this.gameOn){
+                this.drawMino(ctx,this.currMino,this.bx,this.by,this.br);
+                this.drawMino(ctx,this.hold,-3,this.boardHeight,0);
+                for(let i=0; i<5; i++)
+                    this.drawMino(ctx,this.bag[i],this.boardWidth+3, this.boardHeight-i*3, 0);
+            }
         }
     }
 
@@ -414,7 +439,7 @@ window.addEventListener("keydown", (event) =>{
 
 window.addEventListener("keyup", (event) =>{
     pressedKeys[event.code] = false;
-    operatedKeys[event.code] = false;
+    heldKeys[event.code] = false;
 });
 
 
