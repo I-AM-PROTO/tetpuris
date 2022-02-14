@@ -5,7 +5,6 @@
 // TODO: add throttle module on resize
 // TODO: infinity should not happen while airborne
 // TODO: 180 flip
-// TODO: DAS
 // TODO: Gameover
 
 const GHOST_HEIGHT = 3;
@@ -73,7 +72,11 @@ const SRS_TESTS = {
                 "K1C" : [0,0, 1,0, 1,-1, 0,2, 1,2],
                 "K2C" : [0,0, 1,0, 1,1, 0,-2, 1,-2],
                 "K3C" : [0,0, -1,0, -1,-1, 0,2, -1,2],
-                "O" : [0,0]
+                "O" : [0,0],
+                "0F" : [0,0, 0,1, 1,1, -1,1, 1,0, -1,0],
+                "1F" : [0,0, 1,0, 1,2, 1,1, 0,2, 0,1],
+                "2F" : [0,0, 0,-1, -1,-1, 1,-1, -1,0, 1,0],
+                "3F" : [0,0, -1,0, -1,2, -1,1, 0,2, 0,1],
 };
 
 let pressedKeys = {};
@@ -173,6 +176,7 @@ class Board{
             // Clockwise rotation
             if (pressedKeys["ArrowUp"] && !this.heldKeys["ArrowUp"]){
                 let nextBr = this.br==3 ? 0 : this.br+1;
+
                 let code=""
                 if(this.currMino=='I')
                     code = this.currMino+this.br+"C";
@@ -180,19 +184,10 @@ class Board{
                     code = "O";
                 else
                     code = "K"+this.br+"C";
+
                 let tests = SRS_TESTS[code];
-                let m = tests.length
-
-                let passed=false;
-                let dx=0, dy=0;
-                for(let i=0; i<m && !passed; i+=2){
-                    dx=tests[i];
-                    dy=tests[i+1];
-                    //console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr));
-                    if(this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr))
-                        passed=true;
-                }
-
+                let {passed,dx,dy} = this.kick(tests,this.bx,this.by,this.currMino,nextBr);
+                
                 if(passed){
                     this.bx+=dx;
                     this.by+=dy;
@@ -206,6 +201,7 @@ class Board{
             // Counter clockwise rotation
             if (pressedKeys["KeyZ"] && !this.heldKeys["KeyZ"]){
                 let nextBr = this.br==0 ? 3 : this.br-1;
+
                 let code=""
                 if(this.currMino=='I')
                     code = this.currMino+this.br+"CC";
@@ -213,18 +209,9 @@ class Board{
                     code = "O";
                 else
                     code = "K"+this.br+"CC";
-                let tests = SRS_TESTS[code];
-                let m = tests.length
 
-                let passed=false;
-                let dx=0, dy=0;
-                for(let i=0; i<m && !passed; i+=2){
-                    dx=tests[i];
-                    dy=tests[i+1];
-                    //console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr));
-                    if(this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr))
-                        passed=true;
-                }
+                let tests = SRS_TESTS[code];
+                let {passed,dx,dy} = this.kick(tests,this.bx,this.by,this.currMino,nextBr);
 
                 if(passed){
                     this.bx+=dx;
@@ -234,6 +221,23 @@ class Board{
                     redrawBoard = true;
                 }
                 this.heldKeys["KeyZ"] = true;
+            }
+            
+            // 180 Flip (Kick table from OSK's tetr.io)
+            if (pressedKeys["KeyA"] && !this.heldKeys["KeyA"]){
+                let nextBr = this.br>=2 ? this.br-2 : this.br+2;
+                let tests = SRS_TESTS[this.br+"F"];
+                let {passed,dx,dy} = this.kick(tests,this.bx,this.by,this.currMino,nextBr);
+
+                if(passed){
+                    this.bx+=dx;
+                    this.by+=dy;
+                    this.br=nextBr;
+                    this.fallTimer=FALL_INTERVAL; // "Infinity"
+                    redrawBoard = true;
+                }
+
+                this.heldKeys["KeyA"] = true;
             }
 
             // Harddrop
@@ -287,6 +291,21 @@ class Board{
 
             if(redrawBoard) this.drawBoard();
         },1);
+    }
+
+    kick(tests, x, y, type, r){
+        let m = tests.length;
+        let passed=false;
+        let dx=0, dy=0;
+        for(let i=0; i<m; i+=2){
+            dx=tests[i]; dy=tests[i+1];
+            //console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr));
+            if(this.checkMinoPos(x+dx, y+dy, type, r)){
+                passed=true;
+                break;
+            }
+        }
+        return {passed, dx, dy};
     }
 
     decideLeftRight(LR, Ldown, Rdown, Lup, Rup){
