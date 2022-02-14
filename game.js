@@ -4,11 +4,16 @@
 // TODO: redraw canvas and board ONLY IF size changes
 // TODO: add throttle module on resize
 // TODO: infinity should not happen while airborne
+// TODO: 180 flip
+// TODO: DAS
+// TODO: Gameover
 
-const ghostHeight=3;
-const fallInterval=200;
-const blockSeq = "IJLOSTZ";
-const blockColor = {
+const GHOST_HEIGHT = 3;
+const FALL_INTERVAL = 200;
+const INITIAL_DAS = 50;
+const RECURRING_DAS = 10;
+const BLOCK_SEQ = "IJLOSTZ";
+const BLOCK_COLOR = {
                 'L':'#f69552',
                 'J':'#799fcb', // #95b4cc
                 'O':'#fcdc64',
@@ -19,7 +24,7 @@ const blockColor = {
                 'G':'#cececd', // BFBFBF
                 'E':'#ffffff00'
                 } 
-const minoOffset = {
+const MINO_OFFSET = {
                 "I0" : [-2,1,-1,1,0,1,1,1],
                 "I1" : [0,2,0,1,0,0,0,-1],
                 "I2" : [-2,0,-1,0,0,0,1,0],
@@ -51,7 +56,7 @@ const minoOffset = {
                 "E0" : [0,1],
                 "G0" : [0,1]
 }
-const SRStests = {
+const SRS_TESTS = {
                 "I0CC" : [0,0, -1,0, 2,0, -1,2, 2,-1],
                 "I1CC" : [0,0, 2,0, -1,0, 2,1, -1,-2],
                 "I2CC" : [0,0, 1,0, -2,0, 1,-2, -2,1],
@@ -70,26 +75,44 @@ const SRStests = {
                 "K3C" : [0,0, -1,0, -1,-1, 0,2, -1,2],
                 "O" : [0,0]
 };
+
 let pressedKeys = {};
-let heldKeys = {};
 
 var board; // this right?
 
 class Board{
     constructor(id, canvasWidth, canvasHeight, boardWidth, boardHeight){
+        
         this.id = id;
         this.canvasWidth = canvasWidth;
         this.canvasHeight = canvasHeight;
         this.boardWidth = boardWidth;
         this.boardHeight = boardHeight;
-        this.board = new Array(boardHeight+ghostHeight);
-        for(let i=0; i<boardHeight+ghostHeight; i++)
+        this.board = new Array(boardHeight+GHOST_HEIGHT);
+        for(let i=0; i<boardHeight+GHOST_HEIGHT; i++)
             this.board[i] = new Array(boardWidth).fill('E');
-    
-        this.getParams();
 
+        // canvas related values
+        this.mainSquareSize = -1; // size of center square
+        this.blk = -1; // block size
+        this.sx = -100; // leftmost top of board
+        this.sy = -100;
+        this.getParams();
+        
+        // game related values
         this.gameOn = false;
         this.isPaused = false;
+        this.bag = ""; // 7 bag system
+        this.hold = '';
+        this.currMino = '';
+        this.holdSwitched = false;
+        this.fallTimer = -1;
+        this.bx = -100; // currently falling block
+        this.by = -100;
+        this.br = -1;
+        this.DASTimer = {};
+        this.heldKeys = {};
+        this.LR = "Idle"; // -2:LR -1:L 0:Idle 1:R 2:RL
     }
 
     startGame(){
@@ -99,30 +122,56 @@ class Board{
         this.currMino = 'E';
         this.holdSwitched = false;
         this.getNextMino();
-        this.fallTimer = fallInterval;
+        this.fallTimer = FALL_INTERVAL;
         this.interval = setInterval(()=>{
             if (!this.gameOn || this.isPaused) return;
-
-            // Left
-            if (pressedKeys["ArrowLeft"]){
-                if(this.checkMinoPos(this.bx-1,this.by,this.currMino,this.br)){
-                    this.bx--;
-                    this.drawBoard();
-                    pressedKeys["ArrowLeft"]=false;
+            
+            let redrawBoard = false;
+            
+            // Left Right
+            let Ldown = pressedKeys["ArrowLeft"] && !this.heldKeys["ArrowLeft"];
+            let Rdown = pressedKeys["ArrowRight"] && !this.heldKeys["ArrowRight"];
+            let Lup = !pressedKeys["ArrowLeft"];
+            let Rup = !pressedKeys["ArrowRight"];
+            this.LR = this.decideLeftRight(this.LR, Ldown, Rdown, Lup, Rup);
+            let move = true;
+            if(this.LR === "L" && !this.heldKeys["ArrowLeft"]){
+                // If first frame of keypress,
+                // move and set initial DAS
+                this.heldKeys["ArrowLeft"] = true;
+                this.DASTimer["LR"] = INITIAL_DAS;
+            }
+            else if(this.LR === "R" && !this.heldKeys["ArrowRight"]){
+                this.heldKeys["ArrowRight"] = true;
+                this.DASTimer["LR"] = INITIAL_DAS;
+            }
+            else{
+                // DAS
+                if(this.DASTimer["LR"]<=0){
+                    this.DASTimer["LR"] = RECURRING_DAS;
+                }
+                else{
+                    move = false;
+                    this.DASTimer["LR"]--;
                 }
             }
 
-            // Right
-            if (pressedKeys["ArrowRight"]){
-                if(this.checkMinoPos(this.bx+1,this.by,this.currMino,this.br)){
+            if(this.LR === "RL" || this.LR === "L"){
+                if(move && this.checkMinoPos(this.bx-1,this.by,this.currMino,this.br)){
+                    this.bx--;
+                    redrawBoard = true;
+                }
+            }
+
+            if(this.LR === "LR" || this.LR === "R"){
+                if(move && this.checkMinoPos(this.bx+1,this.by,this.currMino,this.br)){
                     this.bx++;
-                    this.drawBoard();
-                    pressedKeys["ArrowRight"]=false;
+                    redrawBoard = true;
                 }
             }
 
             // Clockwise rotation
-            if (pressedKeys["ArrowUp"] && !heldKeys["ArrowUp"]){
+            if (pressedKeys["ArrowUp"] && !this.heldKeys["ArrowUp"]){
                 let nextBr = this.br==3 ? 0 : this.br+1;
                 let code=""
                 if(this.currMino=='I')
@@ -131,7 +180,7 @@ class Board{
                     code = "O";
                 else
                     code = "K"+this.br+"C";
-                let tests = SRStests[code];
+                let tests = SRS_TESTS[code];
                 let m = tests.length
 
                 let passed=false;
@@ -148,14 +197,14 @@ class Board{
                     this.bx+=dx;
                     this.by+=dy;
                     this.br=nextBr;
-                    this.fallTimer=fallInterval; // "Infinity"
-                    this.drawBoard();
+                    this.fallTimer=FALL_INTERVAL; // "Infinity"
+                    redrawBoard = true;
                 }
-                heldKeys["ArrowUp"] = true;
+                this.heldKeys["ArrowUp"] = true;
             }
 
             // Counter clockwise rotation
-            if (pressedKeys["KeyZ"] && !heldKeys["KeyZ"]){
+            if (pressedKeys["KeyZ"] && !this.heldKeys["KeyZ"]){
                 let nextBr = this.br==0 ? 3 : this.br-1;
                 let code=""
                 if(this.currMino=='I')
@@ -164,7 +213,7 @@ class Board{
                     code = "O";
                 else
                     code = "K"+this.br+"CC";
-                let tests = SRStests[code];
+                let tests = SRS_TESTS[code];
                 let m = tests.length
 
                 let passed=false;
@@ -172,7 +221,7 @@ class Board{
                 for(let i=0; i<m && !passed; i+=2){
                     dx=tests[i];
                     dy=tests[i+1];
-                    console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr));
+                    //console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr));
                     if(this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr))
                         passed=true;
                 }
@@ -181,30 +230,30 @@ class Board{
                     this.bx+=dx;
                     this.by+=dy;
                     this.br=nextBr;
-                    this.fallTimer=fallInterval; // "Infinity"
-                    this.drawBoard();
+                    this.fallTimer=FALL_INTERVAL; // "Infinity"
+                    redrawBoard = true;
                 }
-                heldKeys["KeyZ"] = true;
+                this.heldKeys["KeyZ"] = true;
             }
 
             // Harddrop
-            if (pressedKeys["Space"] && !heldKeys["Space"]){
+            if (pressedKeys["Space"] && !this.heldKeys["Space"]){
                 let nextBy = this.by;
                 while(this.checkMinoPos(this.bx, nextBy-1, this.currMino, this.br))
                     nextBy--;
                 this.by=nextBy;
                 this.placeMino(this.bx, this.by, this.currMino, this.br);
                 this.getNextMino();
-                this.drawBoard();
-                heldKeys["Space"] = true;
+                redrawBoard = true;
+                this.heldKeys["Space"] = true;
             }
             
             // Softdrop
             if (pressedKeys["ArrowDown"]){
                 if(this.checkMinoPos(this.bx,this.by-1,this.currMino,this.br)){
                     this.by--;
-                    this.fallTimer=fallInterval;
-                    this.drawBoard();
+                    this.fallTimer=FALL_INTERVAL;
+                    redrawBoard = true;
                 }
                 else{
                     this.fallTimer--;
@@ -215,8 +264,8 @@ class Board{
             if(this.fallTimer<0){
                 if(this.checkMinoPos(this.bx,this.by-1,this.currMino, this.br)){
                     this.by--;
-                    this.fallTimer=fallInterval;
-                    this.drawBoard();
+                    this.fallTimer=FALL_INTERVAL;
+                    redrawBoard = true;
                 }
                 else{
                     this.placeMino(this.bx, this.by, this.currMino, this.br);
@@ -228,14 +277,41 @@ class Board{
             }
 
             // Hold
-            if(pressedKeys["ShiftLeft"] && !heldKeys["ShiftLeft"] && !this.holdSwitched){
+            if(pressedKeys["ShiftLeft"] && !this.heldKeys["ShiftLeft"] && !this.holdSwitched){
                 this.switchHold(this.currMino);
                 this.holdSwitched = true;
-                heldKeys["ShiftLeft"] = true;
+                this.heldKeys["ShiftLeft"] = true;
                 console.log(this.holdSwitched, this.hold);
-                this.drawBoard();
+                redrawBoard = true;
             }
+
+            if(redrawBoard) this.drawBoard();
         },1);
+    }
+
+    decideLeftRight(LR, Ldown, Rdown, Lup, Rup){
+        switch(LR){
+            case "Idle":
+                if(Ldown) return "L";
+                else if(Rdown) return "R";
+                else return "Idle";
+            case "L":
+                if(Lup) return "Idle";
+                else if(Rdown) return "LR";
+                else return "L";
+            case "R":
+                if(Rup) return "Idle";
+                else if(Ldown) return "RL";
+                else return "R";
+            default:
+                if(Rup) return "L";
+                else if(Lup) return "R";
+                else return LR;
+        }
+    }
+    
+    keyUp(k){
+        this.heldKeys[k] = false;
     }
 
     switchHold(h){
@@ -252,12 +328,15 @@ class Board{
     }
 
     placeMino(cx, cy, type, r){
-        let mino = minoOffset[type+r];
+        // record mino on board
+        let mino = MINO_OFFSET[type+r];
         let m = mino.length;
         for(let i=0; i<m; i+=2)
             this.board[cy+mino[i+1]][cx+mino[i]] = type;
+
+        // check line clears
         let cleared = 0;
-        for(let i=0; i<this.boardHeight+ghostHeight; i++){
+        for(let i=0; i<this.boardHeight+GHOST_HEIGHT; i++){
             let lineComplete = true;
             for(let j=0; j<this.boardWidth; j++){
                 if(this.board[i][j]=='E'){
@@ -273,6 +352,7 @@ class Board{
             }
         }
         /*
+        // Using Lodash
         this.board = _.remove(this.board, function(line){
             let complete=true;
             let m = line.length;
@@ -284,13 +364,14 @@ class Board{
             return complete;
         })
         */
-        console.log(cleared, this.board.length, this.board);
-        // TODO: check gameover
+    
+        // check gameover
+        
     }
 
     // cx,cy : center point of mino
     checkMinoPos(cx, cy, type, r){
-        var mino = minoOffset[type+r];
+        var mino = MINO_OFFSET[type+r];
         var m = mino.length;
         for(let i=0; i<m; i+=2)
             if(!this.checkBlock(cx+mino[i], cy+mino[i+1]))
@@ -322,7 +403,7 @@ class Board{
 
     getParams(){
         this.mainSquareSize = Math.min(this.canvasWidth,this.canvasHeight*0.9);
-        this.blk = this.mainSquareSize/(this.boardHeight+ghostHeight);
+        this.blk = this.mainSquareSize/(this.boardHeight+GHOST_HEIGHT);
         // top left position of board
         this.sx = (this.canvasWidth-this.boardWidth*this.blk)/2;
         this.sy = (this.canvasHeight-this.boardHeight*this.blk)/2 + 0.05*this.mainSquareSize;
@@ -382,9 +463,9 @@ class Board{
             ctx.lineTo(this.sx+2*this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
             ctx.stroke()
         
-            for(let i=0; i<this.boardHeight+ghostHeight; i++)
+            for(let i=0; i<this.boardHeight+GHOST_HEIGHT; i++)
                 for(let j=0; j<this.boardWidth; j++)
-                    this.drawBlock(ctx, j,i,blockColor[this.board[i][j]], true);
+                    this.drawBlock(ctx, j,i,BLOCK_COLOR[this.board[i][j]], true);
             if(this.gameOn){
                 this.drawGhostMino(ctx, this.currMino, this.bx, this.by, this.br);
                 this.drawMino(ctx,this.currMino,this.bx,this.by,this.br);
@@ -411,10 +492,10 @@ class Board{
     }
 
     drawMino(ctx,type,cx,cy,r){
-        let pos = minoOffset[type+r];
+        let pos = MINO_OFFSET[type+r];
         let m = pos.length;
         for(let i=0; i<m; i+=2){
-            this.drawBlock(ctx, cx+pos[i], cy+pos[i+1], blockColor[type], true);
+            this.drawBlock(ctx, cx+pos[i], cy+pos[i+1], BLOCK_COLOR[type], true);
         }
     }
 
@@ -422,10 +503,10 @@ class Board{
         let ghostBy = cy;
         while(this.checkMinoPos(cx, ghostBy-1, type, r))
             ghostBy--;
-        let pos = minoOffset[type+r];
+        let pos = MINO_OFFSET[type+r];
         let m = pos.length;
         for(let i=0; i<m; i+=2){
-            this.drawBlock(ctx, cx+pos[i], ghostBy+pos[i+1], blockColor[type], false);
+            this.drawBlock(ctx, cx+pos[i], ghostBy+pos[i+1], BLOCK_COLOR[type], false);
         }
     }
 
@@ -441,7 +522,7 @@ function suffleBag(){
         let j = Math.floor(Math.random()*7);
         if (taken[j]) continue;
         taken[j] = 1;
-        seq += blockSeq[j];
+        seq += BLOCK_SEQ[j];
         i++;
     }
     return seq;
@@ -487,7 +568,7 @@ window.addEventListener("keydown", (event) =>{
 
 window.addEventListener("keyup", (event) =>{
     pressedKeys[event.code] = false;
-    heldKeys[event.code] = false;
+    board.keyUp(event.code);
 });
 
 
@@ -497,7 +578,7 @@ var K = 0;
 setInterval(()=>{
     var ctx = document.getElementById(board.id).getContext('2d');
     board.clearBoard(ctx);
-    board.drawMino(ctx,blockSeq[Math.floor(K/4)],5,20,K%4);
+    board.drawMino(ctx,BLOCK_SEQ[Math.floor(K/4)],5,20,K%4);
     K++;
     if(K>=28) K=0;
 }, 500);
