@@ -3,9 +3,14 @@
 
 // TODO: redraw canvas and board ONLY IF size changes
 // TODO: add throttle module on resize
-// TODO: infinity should not happen while airborne
 // TODO: better hold/look ahead display
 // TODO: Gameover
+// TODO: sound effects
+// TODO: BGM
+// TODO: line clear indicators
+// TODO: score
+// TODO: pause
+// TODO: binding
 
 const GHOST_HEIGHT = 3;
 const FALL_INTERVAL = 200;
@@ -126,178 +131,201 @@ class Board{
         this.holdSwitched = false;
         this.getNextMino();
         this.timer["FALL"] = FALL_INTERVAL;
-        this.interval = setInterval(()=>{
-            if (!this.gameOn || this.isPaused) return;
-            
-            let redrawBoard = false;
-            
-            // Left Right
-            let Ldown = pressedKeys["ArrowLeft"] && !this.heldKeys["ArrowLeft"];
-            let Rdown = pressedKeys["ArrowRight"] && !this.heldKeys["ArrowRight"];
-            let Lup = !pressedKeys["ArrowLeft"];
-            let Rup = !pressedKeys["ArrowRight"];
-            this.LR = this.decideLeftRight(this.LR, Ldown, Rdown, Lup, Rup);
 
-            let move = true;
-            if(this.LR === "L" && !this.heldKeys["ArrowLeft"]){
-                // If first frame of keypress,
-                // move and set initial DAS
-                this.heldKeys["ArrowLeft"] = true;
-                this.timer["LR"] = INITIAL_DAS;
-            }
-            else if(this.LR === "R" && !this.heldKeys["ArrowRight"]){
-                this.heldKeys["ArrowRight"] = true;
-                this.timer["LR"] = INITIAL_DAS;
-            }
-            else if(this.timer["LR"]<=0){
-                this.timer["LR"] = RECURRING_DAS;
-            }
-            else{
-                move = false;
-                this.timer["LR"]--;
-            }
+        var t = this;
+        this.interval = setInterval(function(){t.gameHandler();},1);
+    }
 
-            if(this.LR === "RL" || this.LR === "L"){
-                if(move && this.checkMinoPos(this.bx-1,this.by,this.currMino,this.br)){
-                    this.bx--;
-                    redrawBoard = true;
-                }
-            }
+    resetGame(){
+        // reset board
+        for(let i=0; i<this.boardHeight+GHOST_HEIGHT; i++)
+            this.board[i].fill('E');
+        this.gameOn = true;
+        this.bag = suffleBag();
+        this.hold = 'E';
+        this.currMino = 'E';
+        this.holdSwitched = false;
+        this.getNextMino();
+        this.timer["FALL"] = FALL_INTERVAL;
+    }
 
-            if(this.LR === "LR" || this.LR === "R"){
-                if(move && this.checkMinoPos(this.bx+1,this.by,this.currMino,this.br)){
-                    this.bx++;
-                    redrawBoard = true;
-                }
-            }
+    gameHandler(){
+        if (!this.gameOn || this.isPaused) return;
+        
+        let redrawBoard = false;
+        let minoPlaced = false;
+        
+        // Left Right
+        let Ldown = pressedKeys["ArrowLeft"] && !this.heldKeys["ArrowLeft"];
+        let Rdown = pressedKeys["ArrowRight"] && !this.heldKeys["ArrowRight"];
+        let Lup = !pressedKeys["ArrowLeft"];
+        let Rup = !pressedKeys["ArrowRight"];
+        this.LR = this.decideLeftRight(this.LR, Ldown, Rdown, Lup, Rup);
 
-            // Clockwise rotation
-            if (pressedKeys["ArrowUp"] && !this.heldKeys["ArrowUp"]){
-                let nextBr = this.br==3 ? 0 : this.br+1;
+        let move = true;
+        if(this.LR === "L" && !this.heldKeys["ArrowLeft"]){
+            // If first frame of keypress,
+            // move and set initial DAS
+            this.heldKeys["ArrowLeft"] = true;
+            this.timer["LR"] = INITIAL_DAS;
+        }
+        else if(this.LR === "R" && !this.heldKeys["ArrowRight"]){
+            this.heldKeys["ArrowRight"] = true;
+            this.timer["LR"] = INITIAL_DAS;
+        }
+        else if(this.timer["LR"]<=0){
+            this.timer["LR"] = RECURRING_DAS;
+        }
+        else{
+            move = false;
+            this.timer["LR"]--;
+        }
 
-                let code=""
-                if(this.currMino=='I')
-                    code = this.currMino+this.br+"C";
-                else if(this.currMino=='O')
-                    code = "O";
-                else
-                    code = "K"+this.br+"C";
-
-                let tests = SRS_TESTS[code];
-                let {passed,dx,dy} = this.kick(tests,this.bx,this.by,this.currMino,nextBr);
-                
-                if(passed){
-                    this.bx+=dx;
-                    this.by+=dy;
-                    this.br=nextBr;
-                    this.timer["FALL"]=FALL_INTERVAL; // "Infinity"
-                    redrawBoard = true;
-                }
-                this.heldKeys["ArrowUp"] = true;
-            }
-
-            // Counter clockwise rotation
-            if (pressedKeys["KeyZ"] && !this.heldKeys["KeyZ"]){
-                let nextBr = this.br==0 ? 3 : this.br-1;
-
-                let code=""
-                if(this.currMino=='I')
-                    code = this.currMino+this.br+"CC";
-                else if(this.currMino=='O')
-                    code = "O";
-                else
-                    code = "K"+this.br+"CC";
-
-                let tests = SRS_TESTS[code];
-                let {passed,dx,dy} = this.kick(tests,this.bx,this.by,this.currMino,nextBr);
-
-                if(passed){
-                    this.bx+=dx;
-                    this.by+=dy;
-                    this.br=nextBr;
-                    this.timer["FALL"]=FALL_INTERVAL; // "Infinity"
-                    redrawBoard = true;
-                }
-                this.heldKeys["KeyZ"] = true;
-            }
-            
-            // 180 Flip (Kick table from OSK's tetr.io)
-            if (pressedKeys["KeyA"] && !this.heldKeys["KeyA"]){
-                let nextBr = this.br>=2 ? this.br-2 : this.br+2;
-                let tests = SRS_TESTS[this.br+"F"];
-                let {passed,dx,dy} = this.kick(tests,this.bx,this.by,this.currMino,nextBr);
-
-                if(passed){
-                    this.bx+=dx;
-                    this.by+=dy;
-                    this.br=nextBr;
-                    this.timer["FALL"]=FALL_INTERVAL; // "Infinity"
-                    redrawBoard = true;
-                }
-
-                this.heldKeys["KeyA"] = true;
-            }
-
-            // Harddrop
-            if (pressedKeys["Space"] && !this.heldKeys["Space"]){
-                let nextBy = this.by;
-                while(this.checkMinoPos(this.bx, nextBy-1, this.currMino, this.br))
-                    nextBy--;
-                this.by=nextBy;
-                this.placeMino(this.bx, this.by, this.currMino, this.br);
-                this.getNextMino();
+        if(this.LR === "RL" || this.LR === "L"){
+            if(move && this.checkMinoPos(this.bx-1,this.by,this.currMino,this.br)){
+                this.bx--;
                 redrawBoard = true;
-                this.heldKeys["Space"] = true;
             }
+        }
+
+        if(this.LR === "LR" || this.LR === "R"){
+            if(move && this.checkMinoPos(this.bx+1,this.by,this.currMino,this.br)){
+                this.bx++;
+                redrawBoard = true;
+            }
+        }
+
+        // Clockwise rotation
+        if (pressedKeys["ArrowUp"] && !this.heldKeys["ArrowUp"]){
+            let nextBr = this.br==3 ? 0 : this.br+1;
+
+            let code=""
+            if(this.currMino=='I')
+                code = this.currMino+this.br+"C";
+            else if(this.currMino=='O')
+                code = "O";
+            else
+                code = "K"+this.br+"C";
+
+            let tests = SRS_TESTS[code];
+            let {passed,dx,dy} = this.kick(tests,this.bx,this.by,this.currMino,nextBr);
             
-            // Softdrop
-            if (pressedKeys["ArrowDown"]){
-                let drop = true;
-                if(!this.heldKeys["ArrowDown"]){
-                    this.heldKeys["ArrowDown"] = true;
-                    this.timer["DROP"] = DROP_DAS;
-                }
-                else if(this.timer["DROP"]<=0){
-                    this.timer["DROP"] = DROP_DAS;
-                }
-                else{
-                    drop = false;
-                    this.timer["DROP"]--;
-                }
-
-                if(drop && this.checkMinoPos(this.bx,this.by-1,this.currMino,this.br)){
-                    this.by--;
-                    this.timer["FALL"] = FALL_INTERVAL;
-                    redrawBoard = true;
-                }
+            if(passed){
+                this.bx+=dx;
+                this.by+=dy;
+                this.br=nextBr;
+                if(dx!==0 && dy!==0) this.timer["FALL"]=FALL_INTERVAL; // "Infinity"
+                redrawBoard = true;
             }
+            this.heldKeys["ArrowUp"] = true;
+        }
 
-            // Gravity
-            if(this.timer["FALL"]<0){
-                if(this.checkMinoPos(this.bx,this.by-1,this.currMino, this.br)){
-                    this.by--;
-                    this.timer["FALL"]=FALL_INTERVAL;
-                    redrawBoard = true;
-                }
-                else{
-                    this.placeMino(this.bx, this.by, this.currMino, this.br);
-                    this.getNextMino();
-                }
-            }
-            else{
-                this.timer["FALL"]--;
-            }
+        // Counter clockwise rotation
+        if (pressedKeys["KeyZ"] && !this.heldKeys["KeyZ"]){
+            let nextBr = this.br==0 ? 3 : this.br-1;
 
-            // Hold
-            if(pressedKeys["ShiftLeft"] && !this.heldKeys["ShiftLeft"] && !this.holdSwitched){
-                this.switchHold(this.currMino);
-                this.holdSwitched = true;
-                this.heldKeys["ShiftLeft"] = true;
+            let code=""
+            if(this.currMino=='I')
+                code = this.currMino+this.br+"CC";
+            else if(this.currMino=='O')
+                code = "O";
+            else
+                code = "K"+this.br+"CC";
+
+            let tests = SRS_TESTS[code];
+            let {passed,dx,dy} = this.kick(tests,this.bx,this.by,this.currMino,nextBr);
+
+            if(passed){
+                this.bx+=dx;
+                this.by+=dy;
+                this.br=nextBr;
+                if(dx!==0 && dy!==0) this.timer["FALL"]=FALL_INTERVAL; // "Infinity"
+                redrawBoard = true;
+            }
+            this.heldKeys["KeyZ"] = true;
+        }
+        
+        // 180 Flip (Kick table from OSK's tetr.io)
+        if (pressedKeys["KeyA"] && !this.heldKeys["KeyA"]){
+            let nextBr = this.br>=2 ? this.br-2 : this.br+2;
+            let tests = SRS_TESTS[this.br+"F"];
+            let {passed,dx,dy} = this.kick(tests,this.bx,this.by,this.currMino,nextBr);
+
+            if(passed){
+                this.bx+=dx;
+                this.by+=dy;
+                this.br=nextBr;
+                if(dx!==0 && dy!==0) this.timer["FALL"]=FALL_INTERVAL; // "Infinity"
                 redrawBoard = true;
             }
 
-            if(redrawBoard) this.drawBoard();
-        },1);
+            this.heldKeys["KeyA"] = true;
+        }
+
+        // Harddrop
+        if (pressedKeys["Space"] && !this.heldKeys["Space"]){
+            let nextBy = this.by;
+            while(this.checkMinoPos(this.bx, nextBy-1, this.currMino, this.br))
+                nextBy--;
+            this.by=nextBy;
+            minoPlaced = true;
+            redrawBoard = true;
+            this.heldKeys["Space"] = true;
+        }
+        
+        // Softdrop
+        if (pressedKeys["ArrowDown"]){
+            let drop = true;
+            if(!this.heldKeys["ArrowDown"]){
+                this.heldKeys["ArrowDown"] = true;
+                this.timer["DROP"] = DROP_DAS;
+            }
+            else if(this.timer["DROP"]<=0){
+                this.timer["DROP"] = DROP_DAS;
+            }
+            else{
+                drop = false;
+                this.timer["DROP"]--;
+            }
+
+            if(drop && this.checkMinoPos(this.bx,this.by-1,this.currMino,this.br)){
+                this.by--;
+                this.timer["FALL"] = FALL_INTERVAL;
+                redrawBoard = true;
+            }
+        }
+
+        // Gravity
+        if(this.timer["FALL"]<0){
+            if(this.checkMinoPos(this.bx,this.by-1,this.currMino, this.br)){
+                this.by--;
+                this.timer["FALL"]=FALL_INTERVAL;
+                redrawBoard = true;
+            }
+            else{
+                minoPlaced = true;
+            }
+        }
+        else{
+            this.timer["FALL"]--;
+        }
+
+        // Hold
+        if(pressedKeys["ShiftLeft"] && !this.heldKeys["ShiftLeft"] && !this.holdSwitched){
+            this.switchHold(this.currMino);
+            this.holdSwitched = true;
+            this.heldKeys["ShiftLeft"] = true;
+            redrawBoard = true;
+        }
+        
+
+        if(minoPlaced) {
+            this.placeMino(this.bx, this.by, this.currMino, this.br);
+            if(!this.getNextMino()){
+                this.resetGame();
+            }
+        }
+        if(redrawBoard) this.drawBoard();
     }
 
     kick(tests, x, y, type, r){
@@ -359,7 +387,7 @@ class Board{
         let m = mino.length;
         for(let i=0; i<m; i+=2)
             this.board[cy+mino[i+1]][cx+mino[i]] = type;
-
+        
         // check line clears
         let cleared = 0;
         for(let i=0; i<this.boardHeight+GHOST_HEIGHT; i++){
@@ -390,9 +418,6 @@ class Board{
             return complete;
         })
         */
-    
-        // check gameover
-        
     }
 
     // cx,cy : center point of mino
@@ -411,11 +436,14 @@ class Board{
 
     getNextMino(){
         this.currMino = this.bag[0];
-        this.bag = this.bag.substr(1);
+        this.bag = this.bag.slice(1);
         if(this.bag.length < 5)
             this.bag += suffleBag();
         this.getStartingPos();
         this.holdSwitched = false;
+
+        // check gameover
+        return this.checkMinoPos(this.bx, this.by, this.currMino, this.br);        
     }
 
     getStartingPos(){
@@ -427,7 +455,7 @@ class Board{
     }
 
     getParams(){
-        this.mainSquareSize = Math.min(this.canvasWidth,this.canvasHeight*0.9);
+        this.mainSquareSize = Math.min(this.canvasWidth*0.9,this.canvasHeight*0.9);
         this.blk = this.mainSquareSize/(this.boardHeight+GHOST_HEIGHT);
         // top left position of board
         this.sx = (this.canvasWidth-this.boardWidth*this.blk)/2;
@@ -457,8 +485,8 @@ class Board{
 
             ctx.strokeStyle = 'rgba(0,0,0,0.5)';
             ctx.lineWidth = this.blk/20; // arbitrary 20
-            for(let i=0; i<11; i++){
-                for(let j=0; j<21; j++){
+            for(let i=0; i<=this.boardWidth; i++){
+                for(let j=0; j<=this.boardHeight; j++){
                     //ctx.strokeRect(this.sx+this.blk*i,this.sy+this.blk*(j-1),this.blk,this.blk);
                     ctx.strokeRect(this.sx+this.blk*i, this.sy+this.blk*j, 1,1);
                 }
@@ -583,7 +611,7 @@ function resizeSinglePlayer(){
 
 function setup(){
     console.log("Setting...")
-    setSinglePlayer(10,20);
+    setSinglePlayer(10, 20);
 }
 
 window.onresize = function(e){
