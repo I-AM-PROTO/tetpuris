@@ -63,7 +63,7 @@ const SRS_TESTS = {
                 "I0CC" : [0,0, -1,0, 2,0, -1,2, 2,-1],
                 "I1CC" : [0,0, 2,0, -1,0, 2,1, -1,-2],
                 "I2CC" : [0,0, 1,0, -2,0, 1,-2, -2,1],
-                "I3CC" : [0,0, -2,0, 1,0, -2,-1, 1,2],
+                "I3CC" : [0,0, -2,0, 1,0, -2,-1, 1,2],  
                 "I0C" : [0,0, -2,0, 1,0, -2,-1, 1,2],
                 "I1C" : [0,0, -1,0, 2,0, -1,2, 2,-1],
                 "I2C" : [0,0, 2,0, -1,0, 2,1, -1,-2],
@@ -82,6 +82,7 @@ const SRS_TESTS = {
                 "2F" : [0,0, 0,-1, -1,-1, 1,-1, -1,0, 1,0],
                 "3F" : [0,0, -1,0, -1,2, -1,1, 0,2, 0,1],
 };
+const TSPIN_TESTS = [[-2,2],[0,2],[0,0],[-2,0]];
 
 let pressedKeys = {};
 
@@ -116,7 +117,7 @@ class Board{
         this.sy = -100;
         this.getParams();
         
-        this.interfaceMode = "minimal"; // standard, less, minimal
+        this.interfaceMode = "standard"; // standard, less, minimal
 
         // game related values
         this.gameOn = false;
@@ -131,6 +132,7 @@ class Board{
         this.timer = {}; // FALL LR DROP
         this.heldKeys = {};
         this.LR = "Idle"; // -2:LR -1:L 0:Idle 1:R 2:RL
+        this.tSpin = -1;
     }
 
     startGame(){
@@ -342,11 +344,14 @@ class Board{
     }
 
     // check next position after rotating
+    // also checks if tspin, used in placeMino()
     kick(tests, x, y, type, r){
         let m = tests.length;
         let passed=false;
         let dx=0, dy=0;
+        let kidx = 0;
         for(let i=0; i<m; i+=2){
+            kidx++;
             dx=tests[i]; dy=tests[i+1];
             //console.log(code,i,dx,dy,this.checkMinoPos(this.bx+dx, this.by+dy, this.currMino, nextBr));
             if(this.checkMinoPos(x+dx, y+dy, type, r)){
@@ -354,6 +359,28 @@ class Board{
                 break;
             }
         }
+
+        // check if t-spin
+        if(type==='T' && passed){
+            let idx = r;
+            let f = 0; // two blocks T is facing
+            let nf = 0;
+            for(let i=0; i<4; i++){
+                if(!this.checkBlock(x+dx+TSPIN_TESTS[idx][0],y+dy+TSPIN_TESTS[idx][1]))
+                    if(i<2) f++;
+                    else nf++;    
+                idx = (idx+1)%4;
+            }
+            if(f+nf>=3){
+                // t-spin: either 2 blocks facing or last kick
+                // t-spin mini: only 1 block facing
+                if(f==2 || kidx==5) this.tSpin = 2;
+                else this.tSpin = 1;
+            }
+            else this.tSpin = 0;
+        }
+        else this.tSpin = 0;
+
         return {passed, dx, dy};
     }
 
@@ -420,6 +447,10 @@ class Board{
                 i--;
             }
         }
+
+        const ts_text = ["", "Mini T-spin", "T-spin"];
+        const text = ["", "Single","Double","Triple","Tetris"];
+        if(cleared>0 || this.tSpin>0) console.log(ts_text[this.tSpin]+" "+text[cleared]);
         /*
         // Using Lodash
         this.board = _.remove(this.board, function(line){
