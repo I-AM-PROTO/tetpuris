@@ -116,7 +116,7 @@ class Board{
         this.sy = -100;
         this.getParams();
         
-        this.interfaceMode = "standard"; // standard, less, minimal
+        this.interfaceMode = "minimal"; // standard, less, minimal
 
         // game related values
         this.gameOn = false;
@@ -499,14 +499,6 @@ class Board{
         let ctx = this.bgCtx;
         ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
         ctx.beginPath();
-        
-        // draw hold and next bar
-        let height = this.blk*3;
-        let width = hold.width*height/hold.height;
-        ctx.drawImage(hold,this.sx-width-this.blk/3,this.sy,width,height);
-        height = this.blk*15;
-        width = next.width*height/next.height;
-        ctx.drawImage(next,this.sx+this.blk*this.boardWidth+this.blk/3,this.sy,width,height);
 
         // draw main board
         var gradient = ctx.createLinearGradient(0,this.sy,0,this.canvasHeight);
@@ -547,6 +539,16 @@ class Board{
         ctx.moveTo(this.sx+this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
         ctx.lineTo(this.sx+2*this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
         ctx.stroke()
+
+        if(this.interfaceMode === "standard"){
+            // draw hold and next bar
+            let height = this.blk*3;
+            let width = hold.width*height/hold.height;
+            ctx.drawImage(hold,this.sx-width-this.blk/3,this.sy,width,height);
+            height = this.blk*15;
+            width = next.width*height/next.height;
+            ctx.drawImage(next,this.sx+this.blk*this.boardWidth+this.blk/3,this.sy,width,height);
+        }
     }
 
     drawBoard(){
@@ -555,22 +557,28 @@ class Board{
         ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
         ctx.beginPath();
 
+        if(!this.gameOn) return;
+
         // color blocks
         for(let i=0; i<this.boardHeight+GHOST_HEIGHT; i++)
             for(let j=0; j<this.boardWidth; j++)
                 this.drawBlock(j,i,BLOCK_COLOR[this.board[i][j]], true);
+        // draw current mino and ghost
+        this.drawMino(this.currMino,this.bx,this.by,this.br);
+        this.drawGhostMino(this.currMino, this.bx, this.by, this.br);
 
-        if(this.gameOn){
-            // draw current mino with ghost
-            this.drawMino(this.currMino,this.bx,this.by,this.br);
-            this.drawGhostMino(this.currMino, this.bx, this.by, this.br);
+        if(this.interfaceMode === "standard"){
             // draw held mino
             this.drawRightAlignedMino(this.hold,-3.5,this.boardHeight-3,0);
             // draw lookahead
             for(let i=0; i<5; i++)
                 this.drawLeftAlignedMino(this.bag[i],this.boardWidth+3.5, this.boardHeight-i*3-3, 0);
         }
-
+        else if(this.interfaceMode === "minimal"){
+            this.drawBlock(-1.5,this.boardHeight-1, BLOCK_COLOR[this.hold], true);
+            for(let i=0; i<5; i++)
+                this.drawBlock(this.boardWidth+.5, this.boardHeight-i-1, BLOCK_COLOR[this.bag[i]], true);
+        }
     }
 
     // center each mino within 3x4 box
