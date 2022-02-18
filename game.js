@@ -1,10 +1,9 @@
 // IDEA: Tree generator based on your performance
 // we can add weather - blizzard, thunderstorm (high gravity, minos moving)
 
-// TODO: redraw canvas and board ONLY IF size changes
-// TODO: add throttle module on resize
-// TODO: better hold/look ahead display
-// TODO: line clear indicators
+// TODO: requestAnimationFrame
+// TODO: Start game after image loading
+// TODO: line clear indicators(including t spin)
 // TODO: score
 // TODO: pause
 // TODO: binding
@@ -27,7 +26,7 @@ const BLOCK_COLOR = {
                 'Z':'#ff9994', // ffb2ae
                 'G':'#cececd', // BFBFBF
                 'E':'#ffffff00'
-                } 
+                };
 const MINO_OFFSET = {
                 "I0" : [-2,1,-1,1,0,1,1,1],
                 "I1" : [0,2,0,1,0,0,0,-1],
@@ -59,7 +58,7 @@ const MINO_OFFSET = {
                 "O3" : [-1,1,0,1,-1,0,0,0],
                 "E0" : [0,1],
                 "G0" : [0,1]
-}
+};
 const SRS_TESTS = {
                 "I0CC" : [0,0, -1,0, 2,0, -1,2, 2,-1],
                 "I1CC" : [0,0, 2,0, -1,0, 2,1, -1,-2],
@@ -89,13 +88,21 @@ let pressedKeys = {};
 var board; // this right?
 var hold = new Image();
 var next = new Image();
+var resizeThrottle = false;
 
 class Board{
-    constructor(id, canvasWidth, canvasHeight, boardWidth, boardHeight){
-        
+    constructor(id, container, boardWidth, boardHeight){
+
+        var boardCanvas = createCanvas(id, container.clientWidth, container.clientHeight, 0, 0);
+        var bgCanvas = createCanvas(id+'B', container.clientWidth, container.clientHeight, 0, 0);
+        container.appendChild(bgCanvas);
+        container.appendChild(boardCanvas);
+        this.boardCtx = boardCanvas.getContext('2d');
+        this.bgCtx = bgCanvas.getContext('2d');
+
         this.id = id;
-        this.canvasWidth = canvasWidth;
-        this.canvasHeight = canvasHeight;
+        this.canvasWidth = container.clientWidth;
+        this.canvasHeight = container.clientHeight;
         this.boardWidth = boardWidth;
         this.boardHeight = boardHeight;
         this.board = new Array(boardHeight+GHOST_HEIGHT);
@@ -132,8 +139,11 @@ class Board{
         this.hold = 'E';
         this.currMino = 'E';
         this.holdSwitched = false;
-        this.getNextMino();
         this.timer["FALL"] = FALL_INTERVAL;
+
+        this.getNextMino();
+        this.drawBackground();
+        this.drawBoard();
 
         var t = this;
         this.interval = setInterval(function(){t.gameHandler();},1);
@@ -468,125 +478,134 @@ class Board{
     }
     
     updateCanvas(width, height, left, top){
-        var canvas = document.getElementById(this.id);
+        var boardCanvas = document.getElementById(this.id);
+        var bgCanvas = document.getElementById(this.id+'B');
         this.canvasWidth = width;
         this.canvasHeight = height;
-        canvas.width = width;
-        canvas.height = height;
-        canvas.style.left = left;
-        canvas.style.top = top;
+        boardCanvas.width = width;
+        boardCanvas.height = height;
+        boardCanvas.style.left = left;
+        boardCanvas.style.top = top;
+        bgCanvas.width = width;
+        bgCanvas.height = height;
+        bgCanvas.style.left = left;
+        bgCanvas.style.top = top;
         this.getParams();
+        this.drawBackground();
         this.drawBoard();
     }
 
-    drawBoard(){
-        var canvas = document.getElementById(this.id);
-    
-        if (canvas.getContext('2d')){
-            var ctx = canvas.getContext('2d');
-            
-            // reset canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.beginPath();
+    drawBackground(){
+        let ctx = this.bgCtx;
+        ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
+        ctx.beginPath();
+        
+        // draw hold and next bar
+        let height = this.blk*3;
+        let width = hold.width*height/hold.height;
+        ctx.drawImage(hold,this.sx-width-this.blk/3,this.sy,width,height);
+        height = this.blk*15;
+        width = next.width*height/next.height;
+        ctx.drawImage(next,this.sx+this.blk*this.boardWidth+this.blk/3,this.sy,width,height);
 
-            // draw main board
-            var gradient = ctx.createLinearGradient(0,this.sy,0,this.canvasHeight);
-            gradient.addColorStop(0, "#a68bb5");
-            gradient.addColorStop(1, "#a8c97d");
-            ctx.strokeStyle = gradient;
-            //ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-            ctx.lineWidth = this.blk/20; // arbitrary 20
-            for(let i=0; i<=this.boardWidth; i++){
-                for(let j=0; j<=this.boardHeight; j++){
-                    //ctx.strokeRect(this.sx+this.blk*i,this.sy+this.blk*(j-1),this.blk,this.blk);
-                    ctx.strokeRect(this.sx+this.blk*i, this.sy+this.blk*j, 1,1);
-                }
+        // draw main board
+        var gradient = ctx.createLinearGradient(0,this.sy,0,this.canvasHeight);
+        gradient.addColorStop(0, "#a68bb5");
+        gradient.addColorStop(1, "#a8c97d");
+        ctx.strokeStyle = gradient;
+        //ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = this.blk/20; // arbitrary 20
+        for(let i=0; i<=this.boardWidth; i++){
+            for(let j=0; j<=this.boardHeight; j++){
+                //ctx.strokeRect(this.sx+this.blk*i,this.sy+this.blk*(j-1),this.blk,this.blk);
+                ctx.strokeRect(this.sx+this.blk*i, this.sy+this.blk*j, 1,1);
             }
-            
-            // draw bottom line
-            const LineColor = "#a8c97d";
-            ctx.strokeStyle = LineColor
-            ctx.lineWidth = this.blk/4;
-            ctx.moveTo(this.sx-1, this.sy+this.blk*this.boardHeight+this.blk/8);
-            ctx.lineTo(this.sx+this.blk*this.boardWidth+1, this.sy+this.blk*this.boardHeight+this.blk/8);
-            ctx.stroke();
-
-            ctx.beginPath();
-            var gradient = ctx.createLinearGradient(this.sx,0,Math.max(0,this.sx-this.blk*this.boardWidth),0);
-            gradient.addColorStop(0, LineColor);
-            gradient.addColorStop(1, LineColor+'00');
-            ctx.strokeStyle = gradient;
-            ctx.moveTo(this.sx, this.sy+this.blk*this.boardHeight+this.blk/8);
-            ctx.lineTo(this.sx-this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
-            ctx.stroke();
-
-            ctx.beginPath();
-            gradient = ctx.createLinearGradient(this.sx+this.blk*this.boardWidth,0,Math.min(this.canvasWidth,this.sx+2*this.blk*this.boardWidth),0);
-            gradient.addColorStop(0,LineColor);
-            gradient.addColorStop(1,LineColor+'00');
-            ctx.strokeStyle = gradient;
-            ctx.moveTo(this.sx+this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
-            ctx.lineTo(this.sx+2*this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
-            ctx.stroke()
-
-            // color blocks
-            for(let i=0; i<this.boardHeight+GHOST_HEIGHT; i++)
-                for(let j=0; j<this.boardWidth; j++)
-                    this.drawBlock(ctx, j,i,BLOCK_COLOR[this.board[i][j]], true);
-
-            if(this.gameOn){
-                // draw current mino with ghost
-                this.drawMino(ctx,this.currMino,this.bx,this.by,this.br);
-                this.drawGhostMino(ctx, this.currMino, this.bx, this.by, this.br);
-                // draw held mino
-                this.drawRightAlignedMino(ctx,this.hold,-3.5,this.boardHeight-3,0);
-                // draw lookahead
-                for(let i=0; i<5; i++)
-                    this.drawLeftAlignedMino(ctx,this.bag[i],this.boardWidth+3.5, this.boardHeight-i*3-3, 0);
-            }
-
-            // draw hold and next bar
-            let height = this.blk*3;
-            let width = hold.width*height/hold.height;
-            ctx.drawImage(hold,this.sx-width-this.blk/3,this.sy,width,height);
-            height = this.blk*15;
-            width = next.width*height/next.height;
-            ctx.drawImage(next,this.sx+this.blk*this.boardWidth+this.blk/3,this.sy,width,height);
         }
+
+        // draw bottom line
+        const LineColor = "#a8c97d";
+        ctx.strokeStyle = LineColor
+        ctx.lineWidth = this.blk/4;
+        ctx.moveTo(this.sx-1, this.sy+this.blk*this.boardHeight+this.blk/8);
+        ctx.lineTo(this.sx+this.blk*this.boardWidth+1, this.sy+this.blk*this.boardHeight+this.blk/8);
+        ctx.stroke();
+
+        ctx.beginPath();
+        var gradient = ctx.createLinearGradient(this.sx,0,Math.max(0,this.sx-this.blk*this.boardWidth),0);
+        gradient.addColorStop(0, LineColor);
+        gradient.addColorStop(1, LineColor+'00');
+        ctx.strokeStyle = gradient;
+        ctx.moveTo(this.sx, this.sy+this.blk*this.boardHeight+this.blk/8);
+        ctx.lineTo(this.sx-this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
+        ctx.stroke();
+
+        ctx.beginPath();
+        gradient = ctx.createLinearGradient(this.sx+this.blk*this.boardWidth,0,Math.min(this.canvasWidth,this.sx+2*this.blk*this.boardWidth),0);
+        gradient.addColorStop(0,LineColor);
+        gradient.addColorStop(1,LineColor+'00');
+        ctx.strokeStyle = gradient;
+        ctx.moveTo(this.sx+this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
+        ctx.lineTo(this.sx+2*this.blk*this.boardWidth, this.sy+this.blk*this.boardHeight+this.blk/8);
+        ctx.stroke()
+    }
+
+    drawBoard(){
+        let ctx = this.boardCtx;
+        // reset canvas
+        ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
+        ctx.beginPath();
+
+        // color blocks
+        for(let i=0; i<this.boardHeight+GHOST_HEIGHT; i++)
+            for(let j=0; j<this.boardWidth; j++)
+                this.drawBlock(j,i,BLOCK_COLOR[this.board[i][j]], true);
+
+        if(this.gameOn){
+            // draw current mino with ghost
+            this.drawMino(this.currMino,this.bx,this.by,this.br);
+            this.drawGhostMino(this.currMino, this.bx, this.by, this.br);
+            // draw held mino
+            this.drawRightAlignedMino(this.hold,-3.5,this.boardHeight-3,0);
+            // draw lookahead
+            for(let i=0; i<5; i++)
+                this.drawLeftAlignedMino(this.bag[i],this.boardWidth+3.5, this.boardHeight-i*3-3, 0);
+        }
+
     }
 
     // center each mino within 3x4 box
-    drawCenteredMino(ctx,type,cx,cy,r){
+    drawCenteredMino(type,cx,cy,r){
         if(type=='I')
-            this.drawMino(ctx,type,cx,cy,r);
+            this.drawMino(type,cx,cy,r);
         else if(type=='O')
-            this.drawMino(ctx,type,cx,cy+0.5,r);
+            this.drawMino(type,cx,cy+0.5,r);
         else
-            this.drawMino(ctx,type,cx+0.5,cy-0.5,r);
+            this.drawMino(type,cx+0.5,cy-0.5,r);
     }
 
     // left align each mino within 3x4 box
-    drawLeftAlignedMino(ctx,type,cx,cy,r){
+    drawLeftAlignedMino(type,cx,cy,r){
         if(type=='I')
-            this.drawMino(ctx,type,cx,cy,r);
+            this.drawMino(type,cx,cy,r);
         else if(type=='O')
-            this.drawMino(ctx,type,cx-1,cy+0.5,r);
+            this.drawMino(type,cx-1,cy+0.5,r);
         else
-            this.drawMino(ctx,type,cx,cy-0.5,r);
+            this.drawMino(type,cx,cy-0.5,r);
     }
 
-    drawRightAlignedMino(ctx,type,cx,cy,r){
+    drawRightAlignedMino(type,cx,cy,r){
         if(type=='I')
-            this.drawMino(ctx,type,cx,cy,r);
+            this.drawMino(type,cx,cy,r);
         else if(type=='O')
-            this.drawMino(ctx,type,cx+1,cy+0.5,r);
+            this.drawMino(type,cx+1,cy+0.5,r);
         else
-            this.drawMino(ctx,type,cx+1,cy-0.5,r);
+            this.drawMino(type,cx+1,cy-0.5,r);
     }
 
     // coordinate starts at left bottom as 0,0
     // assumes ctx exists
-    drawBlock(ctx,x,y,c,fill){
+    drawBlock(x,y,c,fill){
+        let ctx = this.boardCtx;
         if(fill){
             ctx.fillStyle = c;
             ctx.fillRect(this.sx+this.blk*x-0.5, this.sy+this.blk*(this.boardHeight-1-y)-0.5, this.blk+0.5, this.blk+0.5);
@@ -599,26 +618,26 @@ class Board{
         }
     }
 
-    drawMino(ctx,type,cx,cy,r){
+    drawMino(type,cx,cy,r){
         let pos = MINO_OFFSET[type+r];
         let m = pos.length;
         for(let i=0; i<m; i+=2){
-            this.drawBlock(ctx, cx+pos[i], cy+pos[i+1], BLOCK_COLOR[type], true);
+            this.drawBlock(cx+pos[i], cy+pos[i+1], BLOCK_COLOR[type], true);
         }
     }
 
-    drawGhostMino(ctx,type,cx,cy,r){
+    drawGhostMino(type,cx,cy,r){
         let ghostBy = cy;
         while(this.checkMinoPos(cx, ghostBy-1, type, r))
             ghostBy--;
         let pos = MINO_OFFSET[type+r];
         let m = pos.length;
         for(let i=0; i<m; i+=2){
-            this.drawBlock(ctx, cx+pos[i], ghostBy+pos[i+1], BLOCK_COLOR[type]+"99", false);
+            this.drawBlock(cx+pos[i], ghostBy+pos[i+1], BLOCK_COLOR[type]+"99", false);
         }
     }
 
-    clearBoard(ctx){
+    clearBoard(){
         this.drawBoard();
     }
 }
@@ -649,11 +668,8 @@ function createCanvas(id, width, height, left, top){
 
 function setSinglePlayer(boardWidth, boardHeight){
     var container = document.getElementById("mainContainer");
-    var newCanvas = createCanvas("single0", container.clientWidth, container.clientHeight, 0, 0);
-    container.appendChild(newCanvas);
-    board = new Board("single0", container.clientWidth, container.clientHeight, boardWidth, boardHeight);
+    board = new Board("single0", container, boardWidth, boardHeight);
     board.startGame();
-    board.drawBoard();
 }
 
 function resizeSinglePlayer(){
@@ -670,7 +686,12 @@ function setup(){
 }
 
 window.onresize = function(e){
-    resizeSinglePlayer();
+    if(!resizeThrottle){
+        console.log("resized");
+        resizeSinglePlayer();
+        resizeThrottle = true;
+        setTimeout(()=>{resizeThrottle=false;}, 16); // floor(1000/60)
+    }
 }
 
 window.addEventListener("keydown", (event) =>{
