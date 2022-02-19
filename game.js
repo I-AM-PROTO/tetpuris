@@ -133,6 +133,8 @@ class Board{
         this.heldKeys = {};
         this.LR = "Idle"; // -2:LR -1:L 0:Idle 1:R 2:RL
         this.tSpin = -1;
+        this.combo = 0;
+        this.b2b = 0;
     }
 
     startGame(){
@@ -448,9 +450,20 @@ class Board{
             }
         }
 
+        if(cleared>0){
+            this.combo++;
+            if(cleared>=4 || this.tSpin>0) this.b2b++;
+            else this.b2b = 0;
+        }
+        else this.combo = 0;
+
         const ts_text = ["", "Mini T-spin", "T-spin"];
         const text = ["", "Single","Double","Triple","Tetris"];
-        if(cleared>0 || this.tSpin>0) console.log(ts_text[this.tSpin]+" "+text[cleared]);
+        if(cleared>0 || this.tSpin>0){
+            console.log(ts_text[this.tSpin]+" "+text[cleared]);
+            console.log("Combo "+this.combo+" "+"Back to back "+this.b2b);
+        }
+    
         /*
         // Using Lodash
         this.board = _.remove(this.board, function(line){
