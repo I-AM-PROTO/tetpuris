@@ -1,5 +1,6 @@
 // IDEA: Tree generator based on your performance
 // we can add weather - blizzard, thunderstorm (high gravity, minos moving)
+// IDEA: Grid color(gradient) changes as the game progresses
 
 // TODO: requestAnimationFrame
 // TODO: Start game after image loading
@@ -91,6 +92,70 @@ var hold = new Image();
 var next = new Image();
 var resizeThrottle = false;
 
+class Effect{
+    constructor(type, size, startX, startY, endX, endY, time){
+        // text, shape
+        this.type = type;
+        this.size = size;
+        this.sx = startX;
+        this.sy = startY;
+        if(Math.abs(endX-startX) < 1e-5) this.slope = 1e+5;
+        else this.slope = (endY-startY)/(endX-startX);
+        this.dx = endX-startX;
+        this.dy = endY-startY;
+        this.time = time;
+        this.state = 'MOVING';
+        this.timer = 0;
+    }
+
+    move(){
+        let d = this.ease(this.timer / this.time);
+
+        if(this.timer == this.time) this,state = 'IDLE';
+        else this.timer++;
+
+        return (this.sx+d*this.dx, this.sy+d*this.dy);
+    }
+
+    ease(t) {
+        return t < 0.5 ? 4*t*t*t : (t-1)*(2*t-2)*(2*t-2)+1;
+    }
+}
+
+class EffectHandler{
+    constructor(id, container, mainSquareSize){
+        var effectCanvas = createCanvas(id+'E', container.clientWidth, container.clientHeight, 0, 0);
+        container.appendChild(effectCanvas);
+        this.ctx = effectCanvas.getContext('2d');
+
+        this.id = id;
+        this.canvasWidth = container.clientWidth;
+        this.canvasHeight = container.clientHeight;
+        this.sideSpace = (container.clientWidth-mainSquareSize)/2;
+
+        this.effects = [];
+    }
+
+    drawEffects(){
+        this.effects.forEach(()=>{
+            if(this.type == 'TEXT'){
+                let {x,y} = this.move();
+                this.ctx.fillText("TEST",x,y);
+            }
+        })
+    }
+
+    addEffect(type, size, startX, startY, endX, endY){
+        this.effects.push(new Effect(type, size, startX, startY, endX, endY));
+    }
+
+    createEssenceEffect(text, sx, sy){
+        let ex = sx + Math.random()*this.sideSpace*2 - this.sideSpace;
+        let ey = sy + Math.random()*20 - 10;
+        this.addEffect('TEXT', 10, sx, sy, ex, ey);
+    }
+}
+
 class Board{
     constructor(id, container, boardWidth, boardHeight){
 
@@ -100,6 +165,7 @@ class Board{
         container.appendChild(boardCanvas);
         this.boardCtx = boardCanvas.getContext('2d');
         this.bgCtx = bgCanvas.getContext('2d');
+        this.effectBg = new EffectHandler(id, container);
 
         this.id = id;
         this.canvasWidth = container.clientWidth;
@@ -625,35 +691,6 @@ class Board{
         }
     }
 
-    // center each mino within 3x4 box
-    drawCenteredMino(type,cx,cy,r){
-        if(type=='I')
-            this.drawMino(type,cx,cy,r);
-        else if(type=='O')
-            this.drawMino(type,cx,cy+0.5,r);
-        else
-            this.drawMino(type,cx+0.5,cy-0.5,r);
-    }
-
-    // left align each mino within 3x4 box
-    drawLeftAlignedMino(type,cx,cy,r){
-        if(type=='I')
-            this.drawMino(type,cx,cy,r);
-        else if(type=='O')
-            this.drawMino(type,cx-1,cy+0.5,r);
-        else
-            this.drawMino(type,cx,cy-0.5,r);
-    }
-
-    drawRightAlignedMino(type,cx,cy,r){
-        if(type=='I')
-            this.drawMino(type,cx,cy,r);
-        else if(type=='O')
-            this.drawMino(type,cx+1,cy+0.5,r);
-        else
-            this.drawMino(type,cx+1,cy-0.5,r);
-    }
-
     // coordinate starts at left bottom as 0,0
     // assumes ctx exists
     drawBlock(x,y,c,fill){
@@ -687,6 +724,35 @@ class Board{
         for(let i=0; i<m; i+=2){
             this.drawBlock(cx+pos[i], ghostBy+pos[i+1], BLOCK_COLOR[type]+"99", false);
         }
+    }   
+    
+    // center each mino within 3x4 box
+    drawCenteredMino(type,cx,cy,r){
+        if(type=='I')
+            this.drawMino(type,cx,cy,r);
+        else if(type=='O')
+            this.drawMino(type,cx,cy+0.5,r);
+        else
+            this.drawMino(type,cx+0.5,cy-0.5,r);
+    }
+
+    // left align each mino within 3x4 box
+    drawLeftAlignedMino(type,cx,cy,r){
+        if(type=='I')
+            this.drawMino(type,cx,cy,r);
+        else if(type=='O')
+            this.drawMino(type,cx-1,cy+0.5,r);
+        else
+            this.drawMino(type,cx,cy-0.5,r);
+    }
+
+    drawRightAlignedMino(type,cx,cy,r){
+        if(type=='I')
+            this.drawMino(type,cx,cy,r);
+        else if(type=='O')
+            this.drawMino(type,cx+1,cy+0.5,r);
+        else
+            this.drawMino(type,cx+1,cy-0.5,r);
     }
 
     clearBoard(){
@@ -721,7 +787,7 @@ function createCanvas(id, width, height, left, top){
 function setSinglePlayer(boardWidth, boardHeight){
     var container = document.getElementById("mainContainer");
     board = new Board("single0", container, boardWidth, boardHeight);
-    board.startGame();
+    //board.startGame();
 }
 
 function resizeSinglePlayer(){
@@ -754,6 +820,92 @@ window.addEventListener("keyup", (event) =>{
     pressedKeys[event.code] = false;
     board.keyUp(event.code);
 });
+
+
+var obj = document.createElement("object");
+var objDoc = obj.contentDocument;
+var 
+
+
+
+/*
+var canvas = document.createElement("canvas"),
+    context = canvas.getContext("2d"),
+    width = 1920,
+    height = 1000,
+    shapes = [randomPolygon(), randomPolygon()],
+    interpolator = flubber.interpolate(shapes[0], shapes[1], { string: false }),
+    startTime;
+
+canvas.width = width;
+canvas.height = height;
+
+var mc = document.getElementById("mainContainer");
+mc.appendChild(canvas);
+
+context.fillStyle = "#e3e3e3";
+context.strokeStyle = "#666";
+context.lineWidth = 4;
+
+requestAnimationFrame(draw);
+
+function draw(time) {
+  var points,
+      t;
+
+  if (!startTime) {
+    startTime = time;
+  }
+
+  t = time - startTime;
+
+  context.clearRect(0, 0, width, height);
+
+  // Next iteration
+  if (t > 1000) {
+    startTime = time - t + 1000;
+    t -= 1000;
+    shapes.shift();
+    shapes.push(randomPolygon());
+    interpolator = flubber.interpolate(shapes[0], shapes[1], { string: false });
+  }
+
+  points = interpolator(ease(t / 1000));
+
+  context.beginPath();
+  points.forEach(function(p, i) {
+    context[i ? "lineTo" : "moveTo"](...p);
+  });
+  context.lineTo(...points[0]);
+  context.stroke();
+  context.fill();
+
+  requestAnimationFrame(draw);
+}
+
+function randomPolygon() {
+  var sides = 3 + Math.floor(Math.random() * 10),
+      r = 100 + Math.random() * 400,
+      offset = Math.random() * 2 * Math.PI,
+      x = width * (Math.random() * 2 + 1) / 4;
+
+  return new Array(sides)
+    .fill(null)
+    .map(function(d, i) {
+      return [
+        Math.cos(offset + 2 * Math.PI * i / sides) * r + x,
+        Math.sin(offset + 2 * Math.PI * i / sides) * r + height / 2
+      ]
+    });
+}
+
+// Cubic in/out easing
+function ease(t) {
+  return t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1;
+}
+*/
+
+
 
 
 /*
