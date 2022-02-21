@@ -111,10 +111,12 @@ class Effect{
     move(){
         let d = this.ease(this.timer / this.time);
 
-        if(this.timer == this.time) this,state = 'IDLE';
+        if(this.timer == this.time) this.state = 'IDLE';
         else this.timer++;
 
-        return (this.sx+d*this.dx, this.sy+d*this.dy);
+        let x = this.sx+d*this.dx;
+        let y = this.sy+d*this.dy;
+        return {x,y};
     }
 
     ease(t) {
@@ -123,7 +125,7 @@ class Effect{
 }
 
 class EffectHandler{
-    constructor(id, container, mainSquareSize){
+    constructor(id, container, sideSpace){
         var effectCanvas = createCanvas(id+'E', container.clientWidth, container.clientHeight, 0, 0);
         container.appendChild(effectCanvas);
         this.ctx = effectCanvas.getContext('2d');
@@ -131,28 +133,39 @@ class EffectHandler{
         this.id = id;
         this.canvasWidth = container.clientWidth;
         this.canvasHeight = container.clientHeight;
-        this.sideSpace = (container.clientWidth-mainSquareSize)/2;
-
+        this.sideSpace = sideSpace;
         this.effects = [];
+
     }
 
     drawEffects(){
-        this.effects.forEach(()=>{
-            if(this.type == 'TEXT'){
-                let {x,y} = this.move();
-                this.ctx.fillText("TEST",x,y);
+        let ctx = this.ctx;
+        ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
+        ctx.beginPath();
+        this.effects.forEach((effect)=>{
+            if(effect.type === 'TEXT'){
+                let {x,y} = effect.move();
+                ctx.fillText("TEST",x,y);
             }
         })
+        this.effects = this.effects.filter((e)=>{return e.state!=='IDLE';});
+        if(this.effects.length>0)
+            window.requestAnimationFrame(()=>{this.drawEffects();});
+        else
+            ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
     }
 
-    addEffect(type, size, startX, startY, endX, endY){
-        this.effects.push(new Effect(type, size, startX, startY, endX, endY));
+    addEffect(type, size, startX, startY, endX, endY, time){
+        this.effects.push(new Effect(type, size, startX, startY, endX, endY, time));
+        if(this.effects.length === 1)
+            window.requestAnimationFrame(()=>{this.drawEffects();});
     }
 
-    createEssenceEffect(text, sx, sy){
-        let ex = sx + Math.random()*this.sideSpace*2 - this.sideSpace;
-        let ey = sy + Math.random()*20 - 10;
-        this.addEffect('TEXT', 10, sx, sy, ex, ey);
+    createEssenceEffect(text, sx, sy, time){
+        let ex = sx - Math.random()*this.sideSpace;
+        let ey = sy + Math.random()*200 - 100;
+        console.log(this.sideSpace, ex,ey);
+        this.addEffect('TEXT', 10, sx, sy, ex, ey, time);
     }
 }
 
@@ -165,7 +178,6 @@ class Board{
         container.appendChild(boardCanvas);
         this.boardCtx = boardCanvas.getContext('2d');
         this.bgCtx = bgCanvas.getContext('2d');
-        this.effectBg = new EffectHandler(id, container);
 
         this.id = id;
         this.canvasWidth = container.clientWidth;
@@ -183,6 +195,8 @@ class Board{
         this.sy = -100;
         this.getParams();
         
+        this.effectBg = new EffectHandler(id, container, (this.canvasWidth-this.blk*this.boardWidth)/2);
+
         this.interfaceMode = "standard"; // standard, less, minimal
 
         // game related values
@@ -215,6 +229,10 @@ class Board{
         this.drawBackground();
         this.drawBoard();
 
+        this.effectBg.createEssenceEffect('TEXT', this.sx, this.sy, 1000);
+        this.effectBg.createEssenceEffect('TEXT', this.sx, this.sy, 1000);
+        this.effectBg.createEssenceEffect('TEXT', this.sx, this.sy, 1000);
+        this.effectBg.createEssenceEffect('TEXT', this.sx, this.sy, 1000);
         var t = this;
         this.interval = setInterval(function(){t.gameHandler();},1);
     }
@@ -787,7 +805,7 @@ function createCanvas(id, width, height, left, top){
 function setSinglePlayer(boardWidth, boardHeight){
     var container = document.getElementById("mainContainer");
     board = new Board("single0", container, boardWidth, boardHeight);
-    //board.startGame();
+    board.startGame();
 }
 
 function resizeSinglePlayer(){
@@ -820,11 +838,6 @@ window.addEventListener("keyup", (event) =>{
     pressedKeys[event.code] = false;
     board.keyUp(event.code);
 });
-
-
-var obj = document.createElement("object");
-var objDoc = obj.contentDocument;
-var 
 
 
 
