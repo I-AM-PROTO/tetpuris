@@ -86,6 +86,7 @@ const SRS_TESTS = {
 const TSPIN_TESTS = [[-2,2],[0,2],[0,0],[-2,0]];
 const SPIN_TEXT = ["", "Mini T-spin", "T-spin"];
 const CLEAR_TEXT = ["", "Single","Double","Triple","Tetris"];
+const EFCT_ALPHA = 220;
 
 var hold = new Image();
 var next = new Image();
@@ -111,7 +112,8 @@ class Effect{
         this.size = config["SIZE"] !== undefined ? config["SIZE"] : 10;
         this.time = config["TIME"] !== undefined ? config["TIME"] : 500;
         this.text = config["TEXT"] !== undefined ? config["TEXT"] : "PLACEHOLDER";
-        this.state = 'MOVING';
+        this.alpha = EFCT_ALPHA;
+        this.state = type === 'TEXT' ? "MOVING" : "FADEIN";
         this.timer = 0;
     }
 
@@ -124,6 +126,29 @@ class Effect{
         let x = this.sx+d*this.dx;
         let y = this.sy+d*this.dy;
         return {x,y};
+    }
+
+    getEndPos(){
+        let x = this.sx+this.dx;
+        let y = this.sy+this.dy;
+        return {x,y};
+    }
+
+    fadeIn(){
+        let alpha = Math.floor(EFCT_ALPHA*this.timer/this.time);
+        
+        if(this.timer == this.time) this.state = 'MOVING';
+        else this.timer++;
+
+        return alpha.toString(16).padStart(2, '0');
+    }
+
+    fadeOut(){
+        let alpha = Math.floor(EFCT_ALPHA*(1-this.timer/this.time));
+        if(this.timer == this.time) this.state = 'DONE';
+        else this.timer++;
+
+        return alpha.toString(16).padStart(2, '0');;
     }
 
     ease(t) {
@@ -147,30 +172,45 @@ class EffectHandler{
     }
 
     drawEffects(){
+        console.log(this.effects.length);
         let ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
-        ctx.beginPath();
+        console.log("Begin");
         this.effects.forEach((effect)=>{
+            ctx.beginPath();
             if(effect.type === 'TEXT'){
-                let {x,y} = effect.move();
-                ctx.font = effect.size + 'px myFont';
-                ctx.fillStyle = effect.color + 'DF';
-                ctx.fillText(effect.text,x,y);
-
-                if(effect.state === 'IDLE'){
-                    effect.type = 'ESSENCE';
-                    effect.state = 'CHANGING';
+                if(effect.state === 'MOVING'){
+                    let {x,y} = effect.move();
+                    ctx.font = effect.size + 'px myFont';
+                    ctx.fillStyle = effect.color + 'df';
+                    ctx.fillText(effect.text,x,y);
+                }
+                else if(effect.state === 'FADEOUT'){
+                    let {x,y} = effect.getEndPos();
+                    let a = effect.fadeOut();
+                    ctx.font = effect.size + 'px myFont';
+                    ctx.fillStyle = effect.color + a;
+                    ctx.fillText(effect.text,x,y);
+                    console.log(effect.color + a);
+                }
+                else if(effect.state === 'IDLE'){
+                    effect.state = 'FADEOUT';
+                    effect.timer = 0;
+                    effect.time = 50; // arbitrary
+                    // add essence effect
                 }
             }
-            /*
             else if(effect.type === 'ESSENCE'){
                 if(effect.state === 'CHANGING'){
-
+                    let {x,y} = effect.getEndPos();
+                    ctx.font = effect.size + 'px myFont';
+                    ctx.fillStyle = effect.color + 'DF';
+                    ctx.fillText(effect.text,x,y);
                 }
             }
-            */
         });
-        this.effects = this.effects.filter((e)=>{return e.state!=='IDLE';});
+        console.log("End");
+        this.effects = this.effects.filter((e)=>{return e.state!=='DONE';});
         if(this.effects.length>0)
             window.requestAnimationFrame(()=>{this.drawEffects();});
         else
@@ -179,8 +219,10 @@ class EffectHandler{
 
     addEffect(type, startX, startY, endX, endY, config){
         this.effects.push(new Effect(type, startX, startY, endX, endY, config));
-        if(this.effects.length === 1)
+        if(this.effects.length === 1){
+            console.log("Animation started");
             window.requestAnimationFrame(()=>{this.drawEffects();});
+        }
     }
 
     createEssenceEffect(sy, config){
@@ -193,7 +235,6 @@ class EffectHandler{
         let txtWidth = this.ctx.measureText(config["TEXT"]).width;
         if(rnd<.5){
             sx = this.sideSpace-txtWidth;
-            console.log(this.ctx.font, txtWidth, sx);
             ex = sx - Math.random()*Math.min(400,Math.max(100,this.sideSpace-txtWidth));
         }
         else{
