@@ -84,6 +84,8 @@ const SRS_TESTS = {
                 "3F" : [0,0, -1,0, -1,2, -1,1, 0,2, 0,1],
 };
 const TSPIN_TESTS = [[-2,2],[0,2],[0,0],[-2,0]];
+const SPIN_TEXT = ["", "Mini T-spin", "T-spin"];
+const CLEAR_TEXT = ["", "Single","Double","Triple","Tetris"];
 
 let pressedKeys = {};
 
@@ -93,7 +95,7 @@ var next = new Image();
 var resizeThrottle = false;
 
 class Effect{
-    constructor(type, size, startX, startY, endX, endY, time){
+    constructor(type, size, startX, startY, endX, endY, time, text){
         // text, shape
         this.type = type;
         this.size = size;
@@ -106,6 +108,7 @@ class Effect{
         this.time = time;
         this.state = 'MOVING';
         this.timer = 0;
+        this.text = text;
     }
 
     move(){
@@ -120,12 +123,13 @@ class Effect{
     }
 
     ease(t) {
-        return t < 0.5 ? 4*t*t*t : (t-1)*(2*t-2)*(2*t-2)+1;
+        //return t < 0.5 ? 4*t*t*t : (t-1)*(2*t-2)*(2*t-2)+1;
+        return Math.pow(t-1,3)+1;
     }
 }
 
 class EffectHandler{
-    constructor(id, container, sideSpace){
+    constructor(id, container, sideSpace, blk){
         var effectCanvas = createCanvas(id+'E', container.clientWidth, container.clientHeight, 0, 0);
         container.appendChild(effectCanvas);
         this.ctx = effectCanvas.getContext('2d');
@@ -134,6 +138,7 @@ class EffectHandler{
         this.canvasWidth = container.clientWidth;
         this.canvasHeight = container.clientHeight;
         this.sideSpace = sideSpace;
+        this.blk = blk;
         this.effects = [];
 
     }
@@ -145,7 +150,8 @@ class EffectHandler{
         this.effects.forEach((effect)=>{
             if(effect.type === 'TEXT'){
                 let {x,y} = effect.move();
-                ctx.fillText("TEST",x,y);
+                ctx.font = '30px serif';
+                ctx.fillText(effect.text,x,y);
             }
         })
         this.effects = this.effects.filter((e)=>{return e.state!=='IDLE';});
@@ -155,17 +161,40 @@ class EffectHandler{
             ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
     }
 
-    addEffect(type, size, startX, startY, endX, endY, time){
-        this.effects.push(new Effect(type, size, startX, startY, endX, endY, time));
+    addEffect(type, size, startX, startY, endX, endY, time, text=""){
+        this.effects.push(new Effect(type, size, startX, startY, endX, endY, time, text));
         if(this.effects.length === 1)
             window.requestAnimationFrame(()=>{this.drawEffects();});
     }
 
-    createEssenceEffect(text, sx, sy, time){
-        let ex = sx - Math.random()*this.sideSpace;
-        let ey = sy + Math.random()*200 - 100;
-        console.log(this.sideSpace, ex,ey);
-        this.addEffect('TEXT', 10, sx, sy, ex, ey, time);
+    createEssenceEffect(text, sy, time){
+        sy += Math.random()*this.blk*2 - this.blk;
+        let ey = sy + Math.random()*this.blk*3 - this.blk*1.5;
+        let sx,ex;
+        let rnd = Math.random();
+        if(rnd<.5){
+            sx = this.sideSpace;
+            ex = sx - Math.random()*Math.min(400,this.sideSpace);
+        }
+        else{
+            sx = this.canvasWidth - this.sideSpace;
+            ex = sx + Math.random()*Math.min(400,this.sideSpace);
+        } 
+        console.log(this.sideSpace, sx,sy,ex,ey, rnd);
+        this.addEffect('TEXT', 30, sx, sy, ex, ey, time, text);
+    }
+
+    updateCanvas(width, height, left, top, sideSpace, blk){
+        var canvas = document.getElementById(this.id+'E');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.left = left;
+        canvas.style.top = top;
+
+        this.canvasWidth = width;
+        this.canvasHeight = height;
+        this.sideSpace = sideSpace;
+        this.blk = blk;
     }
 }
 
@@ -193,9 +222,10 @@ class Board{
         this.blk = -1; // block size
         this.sx = -100; // leftmost top of board
         this.sy = -100;
+        this.sideSpace = -1;
         this.getParams();
         
-        this.effectBg = new EffectHandler(id, container, (this.canvasWidth-this.blk*this.boardWidth)/2);
+        this.effectBg = new EffectHandler(id, container, this.sideSpace, this.blk);
 
         this.interfaceMode = "standard"; // standard, less, minimal
 
@@ -229,10 +259,6 @@ class Board{
         this.drawBackground();
         this.drawBoard();
 
-        this.effectBg.createEssenceEffect('TEXT', this.sx, this.sy, 1000);
-        this.effectBg.createEssenceEffect('TEXT', this.sx, this.sy, 1000);
-        this.effectBg.createEssenceEffect('TEXT', this.sx, this.sy, 1000);
-        this.effectBg.createEssenceEffect('TEXT', this.sx, this.sy, 1000);
         var t = this;
         this.interval = setInterval(function(){t.gameHandler();},1);
     }
@@ -515,10 +541,16 @@ class Board{
         let m = mino.length;
         for(let i=0; i<m; i+=2)
             this.board[cy+mino[i+1]][cx+mino[i]] = type;
-        
+    
+        this.handleLineClears();
+        this.tSpin=0;
+    }
+
+    handleLineClears(){
         // check line clears
-        let cleared = 0;
-        for(let i=0; i<this.boardHeight+GHOST_HEIGHT; i++){
+        let cleared = [];
+        for(let w=0; w<this.boardHeight+GHOST_HEIGHT; w++){
+            let i = w-cleared.length;
             let lineComplete = true;
             for(let j=0; j<this.boardWidth; j++){
                 if(this.board[i][j]=='E'){
@@ -527,25 +559,31 @@ class Board{
                 }
             }
             if(lineComplete){
-                cleared++;
+                cleared.push(w);
                 this.board.splice(i,1);
                 this.board.push(new Array(this.boardWidth).fill('E'));
-                i--;
             }
         }
 
-        if(cleared>0){
+        let lines = cleared.length;
+        let y = this.sy + this.blk * (this.boardHeight-cleared.reduce((p,c,i)=>{return p+(c-p)/(i+1);},0));
+        if(lines>0){
             this.combo++;
-            if(cleared>=4 || this.tSpin>0) this.b2b++;
+            if(lines>=4 || this.tSpin>0) this.b2b++;
             else this.b2b = 0;
         }
         else this.combo = 0;
 
-        const ts_text = ["", "Mini T-spin", "T-spin"];
-        const text = ["", "Single","Double","Triple","Tetris"];
-        if(cleared>0 || this.tSpin>0){
-            console.log(ts_text[this.tSpin]+" "+text[cleared]);
-            console.log("Combo "+this.combo+" "+"Back to back "+this.b2b);
+        if(lines>0){
+            this.effectBg.createEssenceEffect(CLEAR_TEXT[lines],y,500);
+            if(this.combo>1)
+                this.effectBg.createEssenceEffect("Combo "+this.combo,y,500);
+            if(this.b2b>1)
+                this.effectBg.createEssenceEffect("Back to back "+(this.b2b-1),y,500);
+        }
+
+        if(this.tSpin>0){
+            this.effectBg.createEssenceEffect(SPIN_TEXT[this.tSpin],y,500);
         }
     
         /*
@@ -603,6 +641,7 @@ class Board{
         // top left position of board
         this.sx = (this.canvasWidth-this.boardWidth*this.blk)/2;
         this.sy = (this.canvasHeight-this.boardHeight*this.blk)/2 + 0.05*this.mainSquareSize;
+        this.sideSpace = (this.canvasWidth-this.blk*this.boardWidth)/2;
     }
     
     updateCanvas(width, height, left, top){
@@ -621,6 +660,7 @@ class Board{
         this.getParams();
         this.drawBackground();
         this.drawBoard();
+        this.effectBg.updateCanvas(width,height,left,top,this.sideSpace,this.blk);
     }
 
     drawBackground(){
