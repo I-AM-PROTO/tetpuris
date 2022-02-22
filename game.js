@@ -3,6 +3,7 @@
 // IDEA: Grid color(gradient) changes as the game progresses
 
 // TODO: better animation start/end
+// TODO: throttle effect animation to 30fps?
 // TODO: Start game after image loading (use .load)
 // TODO: line clear indicators(including t spin)
 // TODO: score
@@ -112,7 +113,6 @@ class Effect{
         this.size = config["SIZE"] !== undefined ? config["SIZE"] : 10;
         this.time = config["TIME"] !== undefined ? config["TIME"] : 500;
         this.text = config["TEXT"] !== undefined ? config["TEXT"] : "PLACEHOLDER";
-        this.alpha = EFCT_ALPHA;
         this.state = type === 'TEXT' ? "MOVING" : "FADEIN";
         this.timer = 0;
     }
@@ -120,11 +120,16 @@ class Effect{
     move(){
         let d = this.ease(this.timer / this.time);
 
-        if(this.timer == this.time) this.state = 'IDLE';
+        if(this.timer == this.time) this.state = (this.type === 'TEXT') ? 'IDLE' : 'DONE';
         else this.timer++;
 
         let x = this.sx+d*this.dx;
         let y = this.sy+d*this.dy;
+        return {x,y};
+    }
+
+    getStartPos(){
+        let x = this.sx, y = this.sy;
         return {x,y};
     }
 
@@ -137,7 +142,7 @@ class Effect{
     fadeIn(){
         let alpha = Math.floor(EFCT_ALPHA*this.timer/this.time);
         
-        if(this.timer == this.time) this.state = 'MOVING';
+        if(this.timer == this.time) {this.timer = 0; this.time=50; this.state = 'IDLE';}
         else this.timer++;
 
         return alpha.toString(16).padStart(2, '0');
@@ -148,7 +153,7 @@ class Effect{
         if(this.timer == this.time) this.state = 'DONE';
         else this.timer++;
 
-        return alpha.toString(16).padStart(2, '0');;
+        return alpha.toString(16).padStart(2, '0');
     }
 
     ease(t) {
@@ -172,44 +177,66 @@ class EffectHandler{
     }
 
     drawEffects(){
-        console.log(this.effects.length);
         let ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
-        console.log("Begin");
         this.effects.forEach((effect)=>{
             ctx.beginPath();
             if(effect.type === 'TEXT'){
+                ctx.font = effect.size + 'px myFont';
                 if(effect.state === 'MOVING'){
                     let {x,y} = effect.move();
-                    ctx.font = effect.size + 'px myFont';
-                    ctx.fillStyle = effect.color + 'df';
+                    ctx.fillStyle = effect.color + EFCT_ALPHA.toString(16);
                     ctx.fillText(effect.text,x,y);
-                }
-                else if(effect.state === 'FADEOUT'){
-                    let {x,y} = effect.getEndPos();
-                    let a = effect.fadeOut();
-                    ctx.font = effect.size + 'px myFont';
-                    ctx.fillStyle = effect.color + a;
-                    ctx.fillText(effect.text,x,y);
-                    console.log(effect.color + a);
                 }
                 else if(effect.state === 'IDLE'){
                     effect.state = 'FADEOUT';
                     effect.timer = 0;
                     effect.time = 50; // arbitrary
                     // add essence effect
-                }
-            }
-            else if(effect.type === 'ESSENCE'){
-                if(effect.state === 'CHANGING'){
                     let {x,y} = effect.getEndPos();
-                    ctx.font = effect.size + 'px myFont';
-                    ctx.fillStyle = effect.color + 'DF';
+                    let text = ctx.measureText(effect.text);
+                    let config = {"COLOR":effect.color,"SIZE":effect.size*2,"TIME":50};
+                    this.createEssenceEffect(x+text.width/2,y-effect.size/2,config);
+                }
+
+                if(effect.state === 'FADEOUT'){
+                    let {x,y} = effect.getEndPos();
+                    let a = effect.fadeOut();
+                    ctx.fillStyle = effect.color + a;
                     ctx.fillText(effect.text,x,y);
                 }
             }
+            else if(effect.type === 'ESSENCE'){
+                let a = "";
+                if(effect.state === 'FADEIN'){
+                    var {x,y} = effect.getStartPos();
+                    a = effect.fadeIn();
+                }
+                else if(effect.state === 'IDLE'){
+                    var {x,y} = effect.getStartPos();
+                    a = EFCT_ALPHA.toString(16);
+                    effect.timer++;
+                    if(effect.timer == effect.time){
+                        effect.state = 'MOVING';
+                        effect.timer = 0;
+                        effect.time = 500;
+                    }
+                }
+                else if(effect.state === 'MOVING'){
+                    var {x,y} = effect.move();
+                    a = EFCT_ALPHA.toString(16);
+                }
+                
+                let height = effect.size;
+                let width = essence.width*height/essence.height;
+                ctx.drawImage(essence,x,y,width,height);
+                ctx.globalCompositeOperation = "source-atop";
+                ctx.fillStyle = effect.color + a;
+                ctx.fillRect(x,y,width,height);
+                ctx.globalCompositeOperation = "source-over";
+                console.log(effect.color + a);
+            }
         });
-        console.log("End");
         this.effects = this.effects.filter((e)=>{return e.state!=='DONE';});
         if(this.effects.length>0)
             window.requestAnimationFrame(()=>{this.drawEffects();});
@@ -220,12 +247,11 @@ class EffectHandler{
     addEffect(type, startX, startY, endX, endY, config){
         this.effects.push(new Effect(type, startX, startY, endX, endY, config));
         if(this.effects.length === 1){
-            console.log("Animation started");
             window.requestAnimationFrame(()=>{this.drawEffects();});
         }
     }
 
-    createEssenceEffect(sy, config){
+    createTextEffect(sy, config){
         sy += Math.random()*this.blk*2 - this.blk;
         //let ey = sy + Math.random()*this.blk*3 - this.blk*1.5;
         let ey = Math.random()*this.canvasHeight/2 + this.canvasHeight/4;
@@ -242,6 +268,16 @@ class EffectHandler{
             ex = sx + Math.random()*Math.min(400,Math.max(100,this.sideSpace-txtWidth));
         }
         this.addEffect('TEXT', sx, sy, ex, ey, config);
+    }
+
+    // sx,sy: coordinate to center of image
+    createEssenceEffect(sx, sy, config){
+        let height = config["SIZE"];
+        let width = essence.width*height/essence.height;
+        let x = sx - width/2;
+        let y = sy - height/2;
+        if(Math.random()>0.5) this.addEffect('ESSENCE', x, y, x, this.canvasHeight+100, config);
+        else this.addEffect('ESSENCE', x, y, x, -100, config);
     }
 
     updateCanvas(width, height, left, top, sideSpace, blk){
@@ -639,20 +675,20 @@ class Board{
 
         if(lines>0){
             config["TEXT"] = CLEAR_TEXT[lines];
-            this.effectBg.createEssenceEffect(y,config);
+            this.effectBg.createTextEffect(y,config);
             if(this.combo>1){
                 config["TEXT"] = this.combo + " Combo";
-                this.effectBg.createEssenceEffect(y,config);
+                this.effectBg.createTextEffect(y,config);
             }
             if(this.b2b>1){
                 config["TEXT"] = "Back to back "+(this.b2b-1);
-                this.effectBg.createEssenceEffect(y,config);
+                this.effectBg.createTextEffect(y,config);
             }
         }
 
         if(this.tSpin>0){
             config["TEXT"] = SPIN_TEXT[this.tSpin];
-            this.effectBg.createEssenceEffect(y,config);
+            this.effectBg.createTextEffect(y,config);
         }
     
         /*
@@ -954,88 +990,6 @@ window.addEventListener("keyup", (event) =>{
     pressedKeys[event.code] = false;
     board.keyUp(event.code);
 });
-
-
-
-/*
-var canvas = document.createElement("canvas"),
-    context = canvas.getContext("2d"),
-    width = 1920,
-    height = 1000,
-    shapes = [randomPolygon(), randomPolygon()],
-    interpolator = flubber.interpolate(shapes[0], shapes[1], { string: false }),
-    startTime;
-
-canvas.width = width;
-canvas.height = height;
-
-var mc = document.getElementById("mainContainer");
-mc.appendChild(canvas);
-
-context.fillStyle = "#e3e3e3";
-context.strokeStyle = "#666";
-context.lineWidth = 4;
-
-requestAnimationFrame(draw);
-
-function draw(time) {
-  var points,
-      t;
-
-  if (!startTime) {
-    startTime = time;
-  }
-
-  t = time - startTime;
-
-  context.clearRect(0, 0, width, height);
-
-  // Next iteration
-  if (t > 1000) {
-    startTime = time - t + 1000;
-    t -= 1000;
-    shapes.shift();
-    shapes.push(randomPolygon());
-    interpolator = flubber.interpolate(shapes[0], shapes[1], { string: false });
-  }
-
-  points = interpolator(ease(t / 1000));
-
-  context.beginPath();
-  points.forEach(function(p, i) {
-    context[i ? "lineTo" : "moveTo"](...p);
-  });
-  context.lineTo(...points[0]);
-  context.stroke();
-  context.fill();
-
-  requestAnimationFrame(draw);
-}
-
-function randomPolygon() {
-  var sides = 3 + Math.floor(Math.random() * 10),
-      r = 100 + Math.random() * 400,
-      offset = Math.random() * 2 * Math.PI,
-      x = width * (Math.random() * 2 + 1) / 4;
-
-  return new Array(sides)
-    .fill(null)
-    .map(function(d, i) {
-      return [
-        Math.cos(offset + 2 * Math.PI * i / sides) * r + x,
-        Math.sin(offset + 2 * Math.PI * i / sides) * r + height / 2
-      ]
-    });
-}
-
-// Cubic in/out easing
-function ease(t) {
-  return t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1;
-}
-*/
-
-
-
 
 /*
 //debug
