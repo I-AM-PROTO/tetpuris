@@ -660,18 +660,21 @@ class Board{
                 this.board.push(new Array(this.boardWidth).fill('E'));
             }
         }
-
+        
         let lines = cleared.length;
-        let y = this.sy + this.blk * (this.boardHeight-cleared.reduce((p,c,i)=>{return p+(c-p)/(i+1);},0));
-        let size = this.mainSquareSize/50+(lines+this.combo+this.b2b+this.tSpin)*this.blk/20;
-        size = Math.min(this.blk*2,size);
-        let config = {"COLOR":BLOCK_COLOR[type], "TIME":500, "SIZE":size};
+
         if(lines>0){
             this.combo++;
             if(lines>=4 || this.tSpin>0) this.b2b++;
             else this.b2b = 0;
         }
         else this.combo = 0;
+        
+        let y = this.sy + this.blk * (this.boardHeight-cleared.reduce((p,c,i)=>{return p+(c-p)/(i+1);},0));
+        let size = this.mainSquareSize/50+(lines+this.combo+this.b2b+this.tSpin)*this.blk/20;
+        size = Math.min(this.blk*2,size);
+        let config = {"COLOR":BLOCK_COLOR[type], "TIME":500, "SIZE":size};
+
 
         if(lines>0){
             config["TEXT"] = CLEAR_TEXT[lines];
