@@ -2,8 +2,8 @@
 // we can add weather - blizzard, thunderstorm (high gravity, minos moving)
 // IDEA: Grid color(gradient) changes as the game progresses
 
-// TODO: requestAnimationFrame
-// TODO: Start game after image loading
+// TODO: better animation start/end
+// TODO: Start game after image loading (use .load)
 // TODO: line clear indicators(including t spin)
 // TODO: score
 // TODO: pause
@@ -87,28 +87,32 @@ const TSPIN_TESTS = [[-2,2],[0,2],[0,0],[-2,0]];
 const SPIN_TEXT = ["", "Mini T-spin", "T-spin"];
 const CLEAR_TEXT = ["", "Single","Double","Triple","Tetris"];
 
+var hold = new Image();
+var next = new Image();
+var essence = new Image();
+
 let pressedKeys = {};
 
 var board; // this right?
-var hold = new Image();
-var next = new Image();
 var resizeThrottle = false;
 
 class Effect{
-    constructor(type, size, startX, startY, endX, endY, time, text){
+    constructor(type, startX, startY, endX, endY, config){
         // text, shape
         this.type = type;
-        this.size = size;
         this.sx = startX;
         this.sy = startY;
-        if(Math.abs(endX-startX) < 1e-5) this.slope = 1e+5;
-        else this.slope = (endY-startY)/(endX-startX);
         this.dx = endX-startX;
         this.dy = endY-startY;
-        this.time = time;
+        if(Math.abs(endX-startX) < 1e-5) this.slope = 1e+5;
+        else this.slope = (endY-startY)/(endX-startX);
+
+        this.color = config["COLOR"] !== undefined ? config["COLOR"] : 'black';
+        this.size = config["SIZE"] !== undefined ? config["SIZE"] : 10;
+        this.time = config["TIME"] !== undefined ? config["TIME"] : 500;
+        this.text = config["TEXT"] !== undefined ? config["TEXT"] : "PLACEHOLDER";
         this.state = 'MOVING';
         this.timer = 0;
-        this.text = text;
     }
 
     move(){
@@ -133,14 +137,13 @@ class EffectHandler{
         var effectCanvas = createCanvas(id+'E', container.clientWidth, container.clientHeight, 0, 0);
         container.appendChild(effectCanvas);
         this.ctx = effectCanvas.getContext('2d');
-
+        this.ctx.font = ''
         this.id = id;
         this.canvasWidth = container.clientWidth;
         this.canvasHeight = container.clientHeight;
         this.sideSpace = sideSpace;
         this.blk = blk;
         this.effects = [];
-
     }
 
     drawEffects(){
@@ -150,10 +153,23 @@ class EffectHandler{
         this.effects.forEach((effect)=>{
             if(effect.type === 'TEXT'){
                 let {x,y} = effect.move();
-                ctx.font = '30px serif';
+                ctx.font = effect.size + 'px myFont';
+                ctx.fillStyle = effect.color + 'DF';
                 ctx.fillText(effect.text,x,y);
+
+                if(effect.state === 'IDLE'){
+                    effect.type = 'ESSENCE';
+                    effect.state = 'CHANGING';
+                }
             }
-        })
+            /*
+            else if(effect.type === 'ESSENCE'){
+                if(effect.state === 'CHANGING'){
+
+                }
+            }
+            */
+        });
         this.effects = this.effects.filter((e)=>{return e.state!=='IDLE';});
         if(this.effects.length>0)
             window.requestAnimationFrame(()=>{this.drawEffects();});
@@ -161,27 +177,30 @@ class EffectHandler{
             ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
     }
 
-    addEffect(type, size, startX, startY, endX, endY, time, text=""){
-        this.effects.push(new Effect(type, size, startX, startY, endX, endY, time, text));
+    addEffect(type, startX, startY, endX, endY, config){
+        this.effects.push(new Effect(type, startX, startY, endX, endY, config));
         if(this.effects.length === 1)
             window.requestAnimationFrame(()=>{this.drawEffects();});
     }
 
-    createEssenceEffect(text, sy, time){
+    createEssenceEffect(sy, config){
         sy += Math.random()*this.blk*2 - this.blk;
-        let ey = sy + Math.random()*this.blk*3 - this.blk*1.5;
+        //let ey = sy + Math.random()*this.blk*3 - this.blk*1.5;
+        let ey = Math.random()*this.canvasHeight/2 + this.canvasHeight/4;
         let sx,ex;
         let rnd = Math.random();
+        this.ctx.font = config["SIZE"] + 'px myFont';
+        let txtWidth = this.ctx.measureText(config["TEXT"]).width;
         if(rnd<.5){
-            sx = this.sideSpace;
-            ex = sx - Math.random()*Math.min(400,this.sideSpace);
+            sx = this.sideSpace-txtWidth;
+            console.log(this.ctx.font, txtWidth, sx);
+            ex = sx - Math.random()*Math.min(400,Math.max(100,this.sideSpace-txtWidth));
         }
         else{
             sx = this.canvasWidth - this.sideSpace;
-            ex = sx + Math.random()*Math.min(400,this.sideSpace);
-        } 
-        console.log(this.sideSpace, sx,sy,ex,ey, rnd);
-        this.addEffect('TEXT', 30, sx, sy, ex, ey, time, text);
+            ex = sx + Math.random()*Math.min(400,Math.max(100,this.sideSpace-txtWidth));
+        }
+        this.addEffect('TEXT', sx, sy, ex, ey, config);
     }
 
     updateCanvas(width, height, left, top, sideSpace, blk){
@@ -542,11 +561,11 @@ class Board{
         for(let i=0; i<m; i+=2)
             this.board[cy+mino[i+1]][cx+mino[i]] = type;
     
-        this.handleLineClears();
+        this.handleLineClears(type);
         this.tSpin=0;
     }
 
-    handleLineClears(){
+    handleLineClears(type){
         // check line clears
         let cleared = [];
         for(let w=0; w<this.boardHeight+GHOST_HEIGHT; w++){
@@ -567,6 +586,9 @@ class Board{
 
         let lines = cleared.length;
         let y = this.sy + this.blk * (this.boardHeight-cleared.reduce((p,c,i)=>{return p+(c-p)/(i+1);},0));
+        let size = this.mainSquareSize/50+(lines+this.combo+this.b2b+this.tSpin)*this.blk/20;
+        size = Math.min(this.blk*2,size);
+        let config = {"COLOR":BLOCK_COLOR[type], "TIME":500, "SIZE":size};
         if(lines>0){
             this.combo++;
             if(lines>=4 || this.tSpin>0) this.b2b++;
@@ -575,15 +597,21 @@ class Board{
         else this.combo = 0;
 
         if(lines>0){
-            this.effectBg.createEssenceEffect(CLEAR_TEXT[lines],y,500);
-            if(this.combo>1)
-                this.effectBg.createEssenceEffect("Combo "+this.combo,y,500);
-            if(this.b2b>1)
-                this.effectBg.createEssenceEffect("Back to back "+(this.b2b-1),y,500);
+            config["TEXT"] = CLEAR_TEXT[lines];
+            this.effectBg.createEssenceEffect(y,config);
+            if(this.combo>1){
+                config["TEXT"] = this.combo + " Combo";
+                this.effectBg.createEssenceEffect(y,config);
+            }
+            if(this.b2b>1){
+                config["TEXT"] = "Back to back "+(this.b2b-1);
+                this.effectBg.createEssenceEffect(y,config);
+            }
         }
 
         if(this.tSpin>0){
-            this.effectBg.createEssenceEffect(SPIN_TEXT[this.tSpin],y,500);
+            config["TEXT"] = SPIN_TEXT[this.tSpin];
+            this.effectBg.createEssenceEffect(y,config);
         }
     
         /*
@@ -857,7 +885,14 @@ function setup(){
     console.log("Setting...")
     hold.src = "./res/img/hold.png";
     next.src = "./res/img/next.png";
-   
+    essence.src = "./res/img/essence.png";
+
+    var effectFont = new FontFace('myFont', 'url(res/font/EncodeSansCondensed-ExtraBold.ttf)');
+    //var myFont = new FontFace('myFont', 'url(res/font/EncodeSansCondensed-Bold.ttf)');
+    //var myFont = new FontFace('myFont', 'url(res/font/BebasKai.otf)');
+    //var myFont = new FontFace('myFont', 'url(res/font/BarlowCondensed-MediumItalic.otf)');
+    effectFont.load().then((f)=>{ document.fonts.add(f); })
+
     setSinglePlayer(10, 20);
 }
 
