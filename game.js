@@ -89,9 +89,17 @@ const SPIN_TEXT = ["", "Mini T-spin", "T-spin"];
 const CLEAR_TEXT = ["", "Single","Double","Triple","Tetris"];
 const EFCT_ALPHA = 220;
 
+// TODO: this looks horrible
 var hold = new Image();
 var next = new Image();
 var essence = new Image();
+// Sound
+const audioCtx = new AudioContext();
+const clearSound = new Audio();    
+clearSound.crossOrigin = "anonymous";
+clearSound.src = "./res/sound/boom.mp3";
+const clearSoundSrc = audioCtx.createMediaElementSource(clearSound);
+clearSoundSrc.connect(audioCtx.destination);
 
 let pressedKeys = {};
 
@@ -234,7 +242,6 @@ class EffectHandler{
                 ctx.fillStyle = effect.color + a;
                 ctx.fillRect(x,y,width,height);
                 ctx.globalCompositeOperation = "source-over";
-                console.log(effect.color + a);
             }
         });
         this.effects = this.effects.filter((e)=>{return e.state!=='DONE';});
@@ -276,8 +283,8 @@ class EffectHandler{
         let width = essence.width*height/essence.height;
         let x = sx - width/2;
         let y = sy - height/2;
-        if(Math.random()>0.5) this.addEffect('ESSENCE', x, y, x, this.canvasHeight+100, config);
-        else this.addEffect('ESSENCE', x, y, x, -100, config);
+        if(Math.random()>0.5) this.addEffect('ESSENCE', x, y, x, this.canvasHeight+height/2+50, config);
+        else this.addEffect('ESSENCE', x, y, x, -height/2-50, config);
     }
 
     updateCanvas(width, height, left, top, sideSpace, blk){
@@ -687,6 +694,8 @@ class Board{
                 config["TEXT"] = "Back to back "+(this.b2b-1);
                 this.effectBg.createTextEffect(y,config);
             }
+            console.log(clearSound.play());
+            console.log(audioCtx.state);
         }
 
         if(this.tSpin>0){
@@ -993,6 +1002,13 @@ window.addEventListener("keyup", (event) =>{
     pressedKeys[event.code] = false;
     board.keyUp(event.code);
 });
+
+document.getElementById("mainContainer").addEventListener("click", ()=>{
+
+
+    console.log(audioCtx.resume());
+    console.log(audioCtx.state);
+})
 
 /*
 //debug
