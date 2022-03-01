@@ -12,6 +12,10 @@ html, body{
     height: calc(100% - 8mm);
 }
 
+.container {
+    position: absolute;
+}
+
 .board {
     position: absolute;
     /*outline: 1mm dashed black;*/

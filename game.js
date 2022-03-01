@@ -104,7 +104,9 @@ clearSoundSrc.connect(audioCtx.destination);
 let pressedKeys = {};
 
 var board; // this right?
+var tempboard;
 var resizeThrottle = false;
+var mode = "SINGLE";//"VERSUS";
 
 class Effect{
     constructor(type, startX, startY, endX, endY, config){
@@ -287,12 +289,10 @@ class EffectHandler{
         else this.addEffect('ESSENCE', x, y, x, -height/2-50, config);
     }
 
-    updateCanvas(width, height, left, top, sideSpace, blk){
+    updateCanvas(width, height, sideSpace, blk){
         var canvas = document.getElementById(this.id+'E');
         canvas.width = width;
         canvas.height = height;
-        canvas.style.left = left;
-        canvas.style.top = top;
 
         this.canvasWidth = width;
         this.canvasHeight = height;
@@ -761,23 +761,16 @@ class Board{
         this.sideSpace = (this.canvasWidth-this.blk*this.boardWidth)/2;
     }
     
-    updateCanvas(width, height, left, top){
-        var boardCanvas = document.getElementById(this.id);
-        var bgCanvas = document.getElementById(this.id+'B');
-        this.canvasWidth = width;
-        this.canvasHeight = height;
-        boardCanvas.width = width;
-        boardCanvas.height = height;
-        boardCanvas.style.left = left;
-        boardCanvas.style.top = top;
-        bgCanvas.width = width;
-        bgCanvas.height = height;
-        bgCanvas.style.left = left;
-        bgCanvas.style.top = top;
+    fitContainer(co){
+        let w=co.clientWidth, h=co.clientHeight;
+        let boardCanvas = document.getElementById(this.id);
+        let bgCanvas = document.getElementById(this.id+'B');
+        this.canvasWidth = boardCanvas.width = bgCanvas.width = w;
+        this.canvasHeight = boardCanvas.height = bgCanvas.height = h;
         this.getParams();
         this.drawBackground();
         this.drawBoard();
-        this.effectBg.updateCanvas(width,height,left,top,this.sideSpace,this.blk);
+        this.effectBg.updateCanvas(w,h,this.sideSpace,this.blk);
     }
 
     drawBackground(){
@@ -959,6 +952,24 @@ function createCanvas(id, width, height, left, top){
     return canvas;
 }
 
+function createContainer(id, width, height, left, top){
+    var container = document.createElement("div");
+    container.id = id;
+    container.style.width = width + "px";
+    container.style.height = height + "px";
+    container.style.left = left + "px";
+    container.style.top = top + "px";
+    container.classList.add("container");
+    return container;
+}
+
+function resizeContainer(container, width, height, left, top){
+    container.style.width = width + "px";
+    container.style.height = height + "px";
+    container.style.left = left + "px";
+    container.style.top = top + "px";
+}
+
 function setSinglePlayer(boardWidth, boardHeight){
     var container = document.getElementById("mainContainer");
     board = new Board("single0", container, boardWidth, boardHeight);
@@ -967,7 +978,32 @@ function setSinglePlayer(boardWidth, boardHeight){
 
 function resizeSinglePlayer(){
     var container = document.getElementById("mainContainer");
-    board.updateCanvas(container.clientWidth,container.clientHeight, 0, 0);
+    board.fitContainer(container);
+}
+
+function setVersus(boardSizes){
+    var main = document.getElementById("mainContainer");
+    let w = main.clientWidth, h = main.clientHeight, halfw = Math.floor(w/2);
+    var p0 = createContainer("player0", halfw, h, 0, 0);
+    var p1 = createContainer("player1", halfw, h, halfw, 0);
+    main.appendChild(p0);
+    main.appendChild(p1);
+    console.log(main.clientWidth, p1.width, p1);
+    board = new Board("versus0", p0, boardSizes[0][0], boardSizes[0][1]);
+    tempboard = new Board("versus1", p1, boardSizes[1][0], boardSizes[1][1]);
+    board.startGame();
+    tempboard.startGame();
+}
+
+function resizeVersus(){
+    var main = document.getElementById("mainContainer");
+    let w = main.clientWidth, h = main.clientHeight, halfw = Math.floor(w/2);
+    let p0 = document.getElementById("player0");
+    let p1 = document.getElementById("player1");
+    resizeContainer(p0, halfw, h, 0, 0);
+    resizeContainer(p1, halfw, h, halfw, 0);
+    board.fitContainer(p0);
+    tempboard.fitContainer(p1);
 }
 
 function setup(){
@@ -982,13 +1018,20 @@ function setup(){
     //var myFont = new FontFace('myFont', 'url(res/font/BarlowCondensed-MediumItalic.otf)');
     effectFont.load().then((f)=>{ document.fonts.add(f); })
 
-    setSinglePlayer(10, 20);
+    // can do much better than this :/
+    if(mode === "SINGLE")
+        setSinglePlayer(10, 20);
+    else if(mode === "VERSUS")
+        setVersus([[10,20],[10,20]]);
 }
 
 window.onresize = function(e){
     if(!resizeThrottle){
         console.log("resized");
-        resizeSinglePlayer();
+        if(mode === "SINGLE")
+            resizeSinglePlayer(10, 20);
+        else if(mode === "VERSUS")
+            resizeVersus([[10,20],[10,20]]);
         resizeThrottle = true;
         setTimeout(()=>{resizeThrottle=false;}, 16); // floor(1000/60)
     }
@@ -1004,8 +1047,6 @@ window.addEventListener("keyup", (event) =>{
 });
 
 document.getElementById("mainContainer").addEventListener("click", ()=>{
-
-
     console.log(audioCtx.resume());
     console.log(audioCtx.state);
 })
